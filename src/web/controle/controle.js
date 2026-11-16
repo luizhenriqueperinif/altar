@@ -511,7 +511,7 @@
           <button class="btn atual" data-acao="abrirCapitulos">${esc(vs.capitulo)}<small>trocar capítulo ou livro</small></button>
           <button class="btn primary" data-cmd="passoVersiculo" data-delta="1" ${vs.proximo ? '' : 'disabled'}>${I('dir')}<small>${esc(vs.proximo || 'fim')}</small></button>
         </div>
-        <div class="leitura" aria-label="Texto que está na TV"><p>${esc(vs.texto)}</p></div>
+        <div class="leitura" aria-label="Texto que está na TV"><p>${vs.parte ? '' : `<b class="leitura-n">${vs.ref.v}</b>`}${esc(vs.texto)}</p></div>
         ${aviso ? `<p class="note">${aviso}</p>` : ''}
         ${gradeCapitulo(vs, palavra)}
         ${preparados}

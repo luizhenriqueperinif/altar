@@ -451,6 +451,8 @@ a.btn.primary { color: var(--on-accent); }
 
 /* Versículo para o pastor ler no celular: o mesmo texto que está na TV, com letra grande. */
 /* Fica logo abaixo das setas, que não saem do lugar quando o versículo é comprido. */
-.leitura { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--navy); border-radius: 12px; padding: 14px 16px; }
-.leitura p { margin: 0; font-family: "Atkinson Hyperlegible", var(--font, sans-serif); font-size: 23px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
-@media (min-width: 860px) { .leitura { max-width: 720px; } .leitura p { font-size: 26px; } }
+/* A letra acompanha a largura do celular (uns 30px num celular comum) e o número do versículo vai na frente, como na Bíblia. */
+.leitura { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px 18px 20px; box-shadow: 0 1px 3px rgba(20, 30, 60, .08); }
+.leitura p { margin: 0; font-family: "Atkinson Hyperlegible", var(--font-ui); font-size: clamp(26px, 7.7vw, 32px); line-height: 1.38; color: var(--ink); overflow-wrap: break-word; text-wrap: pretty; }
+.leitura-n { font-family: var(--font-ui); font-size: .55em; font-weight: 800; color: var(--navy); vertical-align: .6em; line-height: 1; margin-right: .35em; }
+@media (min-width: 860px) { .leitura { max-width: 720px; padding: 24px 26px 26px; } .leitura p { font-size: 34px; } }
