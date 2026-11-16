@@ -220,7 +220,8 @@ main > * { max-width: 1180px; margin-inline: auto; }
 /* Mostrar uma janela do notebook na TV */
 #janela-tv { margin-top: auto; display: grid; gap: 8px; }
 #janela-tv:empty { display: none; }
-#janela-tv + .status { margin-top: 0; }
+/* O aviso de atualização fica entre os dois, então "~" e não "+": senão o botão solta do rodapé e fica no meio da barra. */
+#janela-tv:not(:empty) ~ .status { margin-top: 0; }
 .btn.bloco { width: 100%; justify-content: center; }
 .lado-btn { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .14); color: var(--side-ink); }
 .lado-btn:hover { background: var(--side-hover); }
