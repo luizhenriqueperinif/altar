@@ -1,6 +1,6 @@
 {
   "name": "altar",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "private": true,
   "description": "Altar: prepara a reunião no notebook e conduz pelo celular, projetando na TV da igreja.",
   "main": "src/main/main.js",
@@ -47,6 +47,10 @@
       {
         "from": "android/app/build/outputs/apk/release/app-release.apk",
         "to": "Altar.apk"
+      },
+      {
+        "from": "android/app/build/outputs/apk/release/output-metadata.json",
+        "to": "Altar.apk.json"
       }
     ],
     "publish": {

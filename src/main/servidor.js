@@ -85,9 +85,26 @@ function enviarArquivo(req, res, arquivo, cabecalhos = {}) {
 /** Muda a cada vez que o programa abre: as páginas usam para saber que precisam recarregar. */
 const INICIO = Date.now().toString(36);
 
+/**
+ * Versão do aplicativo do Android que o notebook carrega (o "versionCode"), ou null se não der para saber.
+ * O Gradle grava essa ficha ao lado do APK; o instalador leva as duas coisas (Altar.apk e Altar.apk.json).
+ * O aplicativo no celular compara com a dele e oferece a atualização.
+ */
+function versaoDoApk(apk) {
+  if (!apk) return null;
+  for (const ficha of [apk + '.json', path.join(path.dirname(apk), 'output-metadata.json')]) {
+    try {
+      const codigo = JSON.parse(fs.readFileSync(ficha, 'utf8')).elements[0].versionCode;
+      if (Number.isInteger(codigo) && codigo > 0) return codigo;
+    } catch { /* sem a ficha, ou ficha estranha: tenta a próxima */ }
+  }
+  return null;
+}
+
 function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens = null, apk = null, aoErrar = () => {} }) {
   // O aplicativo do Android vai junto com o programa do notebook; o celular baixa daqui (ver /app/Altar.apk).
   const temApk = !!apk && fs.existsSync(apk);
+  const appVersao = temApk ? versaoDoApk(apk) : null;
   const porta = dados.config.porta;
   const token = dados.config.token;
   let estado = estadoInicial();
@@ -363,7 +380,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       nomesReunioes: [...new Set(dados.reunioes.map(r => r.nome).filter(Boolean))].slice(-12),
       biblioteca: dados.biblioteca.filter(b => b.tipo !== 'fundo').map(b => ({ id: b.id, tipo: b.tipo, titulo: b.titulo, arquivo: b.arquivo, capa: b.capa || undefined, criadoEm: b.criadoEm, qtd: b.arquivos ? b.arquivos.length : undefined })),
       recentes: dados.recentes(reuniao?.pastorId).map(r => ({ ...r, rotulo: biblia.rotulo(r) })),
-      info: { inicio: INICIO, url, qrSvg, tv: tvStatus, telas, celulares: celularesConectados(), telaEspera: dados.config.telaEspera, musicaEspera: dados.config.musicaEspera || null, espera: dados.telaEspera(estado.reuniaoId), logo: dados.config.logo || null, app: temApk, letraVersiculo: letraValida(dados.config.letraVersiculo) },
+      info: { inicio: INICIO, url, qrSvg, tv: tvStatus, telas, celulares: celularesConectados(), telaEspera: dados.config.telaEspera, musicaEspera: dados.config.musicaEspera || null, espera: dados.telaEspera(estado.reuniaoId), logo: dados.config.logo || null, app: temApk, appVersao, letraVersiculo: letraValida(dados.config.letraVersiculo) },
     };
     if (completo) {
       // Só o Painel precisa de tudo para preparar as reuniões.
@@ -631,4 +648,4 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
   };
 }
 
-module.exports = { criarServidor, ipLocal };
+module.exports = { criarServidor, ipLocal, versaoDoApk };

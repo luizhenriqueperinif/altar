@@ -294,6 +294,9 @@ body { min-height: 100vh; min-height: 100dvh; }
 .painel-topo .btn { background: transparent; border-color: #4a5a82; color: var(--navy-ink); }
 .toolbar { box-shadow: none; }
 .toolbar .btn { background: var(--surface-2); }
+/* O botão principal da barra continua vermelho (a regra de cima deixava a letra branca num fundo claro). */
+.toolbar .btn.primary:not(:disabled) { background: var(--accent); }
+.toolbar .btn.primary:disabled { color: var(--muted); opacity: 1; }
 .aviso { border-width: 1.5px; }
 
 /* Janela do notebook na TV: botões grandes que apertam as teclas lá no notebook */
@@ -419,6 +422,8 @@ body { min-height: 100vh; min-height: 100dvh; }
 /* Passos para instalar o aplicativo do Android (tela inicial, só no navegador do celular) */
 .app-cel { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line-2); }
 .app-cel h2 { margin: 0; font-size: 22px; color: var(--navy); }
+.app-cel p { margin: 0; font-size: 18px; line-height: 1.4; }
+.app-cel .bar { height: 18px; background: var(--surface); }
 .app-cel ol { margin: 0; padding-left: 24px; display: grid; gap: 8px; font-size: 18px; line-height: 1.4; }
 a.btn { text-decoration: none; color: inherit; }
 a.btn.primary { color: var(--on-accent); }
@@ -432,6 +437,15 @@ a.btn.primary { color: var(--on-accent); }
 .origem span { display: grid; gap: 3px; }
 .origem b { font-size: 23px; }
 .origem small { font-size: 16px; font-weight: 400; color: var(--muted); line-height: 1.3; }
+/* Embaixo: as últimas fotos e vídeos do celular (só no aplicativo), em quadradinhos para marcar */
+.recentes-tit { margin-top: 14px; }
+.recentes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.rec { aspect-ratio: 1; padding: 0; border: 0; border-radius: 12px; overflow: hidden; background: #dfe3ec; font: inherit; color: inherit; }
+.rec img { display: block; }
+.rec.on::after { content: ""; position: absolute; inset: 0; border: 4px solid var(--navy); border-radius: 12px; pointer-events: none; }
+.rec .play { width: 32px; height: 32px; margin: -16px 0 0 -16px; }
+.rec .play .i { width: 14px; height: 14px; }
+@media (min-width: 860px) { .recentes { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
 @media (min-width: 860px) { .mais-opcoes { max-width: 720px; } .m-meio > .encerrar-sozinho { min-width: 420px; } }
 
 /* ---------- Celular: o meio é o que importa ---------- */

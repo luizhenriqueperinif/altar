@@ -18,6 +18,7 @@
   let escolhendoMusica = false; // lista de músicas para tocar avulsa
   let envio = null;            // mandar arquivos do celular para a Biblioteca: { status, atual, total, pct, resultado, modo }
   let colocando = false;       // "Colocar na reunião": a pergunta "onde está?" (no notebook ou neste celular)
+  let recentes = null;         // últimas fotos e vídeos do celular, embaixo dessa pergunta (só no aplicativo): { status, itens, sel }
   let escolhendoBib = null;    // colocar da Biblioteca na reunião: { aba, sel: [ids na ordem marcada] }
   let novaReuniao = null;      // criando reunião pelo celular: { pastorId, nome }
   let escolhendoJanela = null; // lista das janelas abertas no notebook: { lista: null (carregando) | [...] }
@@ -219,6 +220,7 @@
       ${aberta ? `<div class="reuniao-aberta">
         <span class="note">Reunião aberta agora: ${esc(tituloReuniao(dados.reuniao))}</span>
         <button class="btn primary huge" data-acao="voltarReuniao">${I('lista')} Voltar para a reunião</button></div>` : ''}
+      ${cartaoAtualizarApp()}
       <div class="eyebrow">Hoje · ${esc(diaSemana(dados.hoje))}</div>
       ${controleJanela()}
       <h1>Qual reunião vai começar?</h1>
@@ -254,6 +256,48 @@
       <button class="btn" data-acao="app">${I('fechar')} Fechar</button>
     </div>`;
   }
+
+  // Dentro do aplicativo: quando o notebook carrega uma versão mais nova do aplicativo, oferece a atualização.
+  // O aplicativo baixa do notebook e o Android pergunta à pessoa se pode instalar (ver android/, "atualizar").
+  let atualizacaoApp = null;   // null | { status: 'baixando' | 'confirmar' | 'erro', pct }
+  function versaoDoApp() {
+    // O primeiro aplicativo (versão 1) ainda não sabia dizer a versão.
+    try { return window.AltarApp.versao ? Number(window.AltarApp.versao()) || 1 : 1; } catch { return 1; }
+  }
+  function cartaoAtualizarApp() {
+    if (!noApp() || !dados.info || !(dados.info.appVersao > versaoDoApp())) return '';
+    if (!window.AltarApp.atualizar) {
+      return `<div class="app-cel"><h2>Tem uma versão nova do aplicativo</h2>
+        <p>Só desta vez, a instalação é pelo navegador: abra a câmera do celular, leia o QR code do notebook e toque em <strong>Instalar o aplicativo do Altar neste celular</strong>. Das próximas vezes, o botão de atualizar aparece aqui.</p></div>`;
+    }
+    const a = atualizacaoApp;
+    if (a && a.status === 'baixando') {
+      return `<div class="app-cel" role="status"><h2>Baixando o aplicativo novo…</h2>
+        <div class="bar"><i data-app-pct style="width:${a.pct}%"></i></div>
+        <p>Vem do notebook, pelo Wi-Fi da igreja. Deixe esta tela aberta.</p></div>`;
+    }
+    if (a && a.status === 'confirmar') {
+      return `<div class="app-cel" role="status"><h2>Falta só confirmar</h2>
+        <p>O celular está perguntando se pode atualizar o Altar: toque em <strong>Atualizar</strong>. Se ele pedir, permita que o Altar instale aplicativos e volte.</p>
+        <button class="btn" data-acao="atualizarApp">Não apareceu a pergunta? Tentar de novo</button></div>`;
+    }
+    return `<div class="app-cel"><h2>Tem uma versão nova do aplicativo</h2>
+      ${a && a.status === 'erro'
+        ? '<p>Não deu para atualizar agora. Confira se o celular está no Wi-Fi da igreja e toque de novo.</p>'
+        : '<p>Leva menos de um minuto. O celular vai perguntar se pode atualizar: toque em <strong>Atualizar</strong>.</p>'}
+      <button class="btn primary" data-acao="atualizarApp">${I('descer')} Atualizar o aplicativo</button></div>`;
+  }
+  window.aoAtualizarApp = a => {
+    if (a.erro) atualizacaoApp = { status: 'erro' };
+    else if (a.desistiu) atualizacaoApp = null;
+    else if (a.confirmar) atualizacaoApp = { status: 'confirmar' };
+    else if (atualizacaoApp && atualizacaoApp.status === 'baixando') {
+      atualizacaoApp.pct = a.pct;
+      const barra = app.querySelector('[data-app-pct]');
+      if (barra) { barra.style.width = a.pct + '%'; return; }
+    }
+    desenhar(true);
+  };
 
   // Nomes da semana da igreja; o do dia vem primeiro.
   const NOMES_DA_SEMANA = ['Encontro com Deus', 'Reunião da prosperidade', 'Reunião de cura', 'Reunião dos filhos de Deus', 'Reunião da família', 'Reunião de libertação', 'Terapia do amor'];
@@ -628,7 +672,82 @@
         <div class="eyebrow">Onde está o que você quer colocar?</div>
         ${origem('abrirBib', 'biblioteca', 'No notebook', 'Fotos, vídeos, músicas e pregações que já estão na Biblioteca')}
         ${origem('abrirEnvioReuniao', 'enviar', 'Neste celular', 'Manda agora e já entra na reunião')}
-      </div></div>`;
+        ${secaoRecentes()}
+      </div>
+      ${recentes && recentes.sel.length ? `<div class="toolbar"><button class="btn primary" data-acao="colocarRecentes">Colocar ${recentes.sel.length} na reunião</button></div>` : ''}
+    </div>`;
+  }
+
+  // ---------- Últimas fotos e vídeos do celular (só no aplicativo Android) ----------
+  // Uma página não consegue ver a galeria do celular; o aplicativo consegue. A página pede a lista e as miniaturas
+  // em /__celular/ (quem responde é o aplicativo, não o notebook) e, na hora de mandar, é o aplicativo que envia
+  // os arquivos para o notebook, avisando aqui quanto já foi.
+  const QTD_RECENTES = 18;
+  const appTemRecentes = () => !!(window.AltarApp && window.AltarApp.recentes && window.AltarApp.mandarRecentes);
+
+  async function carregarRecentes() {
+    if (!appTemRecentes()) { recentes = null; return; }
+    const antes = recentes || {};
+    let pode = false;
+    try { pode = window.AltarApp.recentes() === 'sim'; } catch { /* aplicativo antigo */ }
+    if (!pode) { recentes = { status: 'pedir', itens: [], sel: [], negou: !!(antes.negou || antes.pediu) }; desenhar(true); return; }
+    if (antes.status !== 'lista') { recentes = { status: 'carregando', itens: [], sel: [] }; desenhar(true); }
+    try {
+      const r = await fetch(`/__celular/recentes.json?n=${QTD_RECENTES}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('status ' + r.status);
+      const itens = await r.json();
+      const marcados = (recentes && recentes.sel) || [];
+      recentes = { status: 'lista', itens, sel: marcados.filter(id => itens.some(m => String(m.id) === id)) };
+    } catch { recentes = { status: 'erro', itens: [], sel: [] }; }
+    desenhar(true);
+  }
+  // O aplicativo chama quando a pessoa respondeu à pergunta de permissão (ou voltou dos ajustes do celular).
+  window.aoMudarRecentes = () => { if (colocando) carregarRecentes(); };
+
+  function secaoRecentes() {
+    const r = recentes;
+    if (!r) return '';
+    let corpo;
+    if (r.status === 'pedir') {
+      corpo = `<button class="btn" data-acao="pedirRecentes">${I('imagem')} Mostrar aqui as últimas fotos e vídeos</button>
+        ${r.negou ? '<p class="note">O celular não deixou o Altar ver as fotos. Toque de novo e escolha "Permitir".</p>' : ''}`;
+    } else if (r.status === 'carregando') corpo = '<p class="note">Procurando as fotos…</p>';
+    else if (r.status === 'erro') corpo = '<p class="note">Não deu para ver as fotos deste celular. Use o botão "Neste celular", aqui em cima.</p>';
+    else if (!r.itens.length) corpo = '<p class="note">Nenhuma foto ou vídeo neste celular.</p>';
+    else {
+      corpo = `<p class="note">Toque para marcar. Entram no fim da reunião, na ordem em que você marcou.</p>
+        <div class="recentes">${r.itens.map(m => {
+          const n = r.sel.indexOf(String(m.id)) + 1, video = m.tipo === 'video';
+          return `<button class="rec bib-img ${n ? 'on' : ''}" data-acao="marcarRecente" data-id="${m.id}" aria-pressed="${n ? 'true' : 'false'}" aria-label="${video ? 'Vídeo' : 'Foto'}${n ? ', marcado' : ''}">
+            <img src="/__celular/mini/${video ? 'video' : 'imagem'}/${m.id}" alt="" loading="lazy">
+            ${video ? `<i class="play">${I('play')}</i>${m.dur ? `<i class="qtd">${mmss(m.dur)}</i>` : ''}` : ''}
+            ${n ? `<b class="ordem">${I('ok')} ${n}</b>` : ''}</button>`;
+        }).join('')}</div>`;
+    }
+    return `<div class="eyebrow recentes-tit">Últimas fotos e vídeos deste celular</div>${corpo}`;
+  }
+
+  // O aplicativo manda os arquivos marcados; aqui fica só a tela de "Enviando…" (a mesma de "Neste celular").
+  function mandarRecentes() {
+    const itens = recentes.sel.map(id => recentes.itens.find(m => String(m.id) === id)).filter(Boolean).map(m => ({ id: m.id, tipo: m.tipo }));
+    if (!itens.length) return;
+    const lote = novoLote();
+    colocando = false; recentes = null;
+    envio = { status: 'enviando', naReuniao: true, total: itens.length, atual: 1, pct: 0, modo: 'arquivos' };
+    window.aoMandarRecentes = async a => {
+      if (!envio || envio.status !== 'enviando') return;
+      if (!a.fim) {
+        const mudou = a.atual !== envio.atual;
+        envio.atual = a.atual; envio.pct = a.pct;
+        if (mudou) desenhar(true);
+        else { const barra = app.querySelector('[data-envio-pct]'); if (barra) barra.style.width = a.pct + '%'; }
+        return;
+      }
+      window.aoMandarRecentes = null;
+      if (a.ok) await terminarEnvio(lote, 'arquivos'); else envio.status = 'erro';
+      desenhar(true);
+    };
+    try { window.AltarApp.mandarRecentes(JSON.stringify({ lote, itens })); } catch { envio.status = 'erro'; }
   }
 
   function telaBiblioteca() {
@@ -669,10 +788,25 @@
     });
   }
 
+  const novoLote = () => (Math.random().toString(36).slice(2, 12) + Date.now().toString(36)).replace(/[^a-z0-9]/g, '');
+
+  // Os arquivos do lote já chegaram no notebook: ele guarda na Biblioteca (e na reunião, se veio de "Colocar na reunião").
+  async function terminarEnvio(lote, modo) {
+    try {
+      const naReuniao = envio.naReuniao && dados.estado.reuniaoId ? `&reuniao=${encodeURIComponent(dados.estado.reuniaoId)}` : '';
+      const r = await fetch(`/api/enviar-fim?t=${encodeURIComponent(conexao.token)}&lote=${lote}&modo=${modo}${naReuniao}`, { method: 'POST' });
+      if (!r.ok) throw new Error('fim ' + r.status);
+      envio.resultado = await r.json();
+      envio.status = 'pronto';
+    } catch (e) {
+      envio.status = 'erro';
+    }
+  }
+
   async function enviarArquivos(arquivos, modo) {
     const lista = Array.from(arquivos);
     if (!lista.length) return;
-    const lote = (Math.random().toString(36).slice(2, 12) + Date.now().toString(36)).replace(/[^a-z0-9]/g, '');
+    const lote = novoLote();
     const t = encodeURIComponent(conexao.token);
     Object.assign(envio, { status: 'enviando', total: lista.length, atual: 0, pct: 0, modo });
     try {
@@ -684,12 +818,7 @@
           if (barra) barra.style.width = p + '%';
         });
       }
-      // Veio de "Colocar na reunião": o notebook já põe o que chegou no fim da reunião aberta.
-      const naReuniao = envio.naReuniao && dados.estado.reuniaoId ? `&reuniao=${encodeURIComponent(dados.estado.reuniaoId)}` : '';
-      const r = await fetch(`/api/enviar-fim?t=${t}&lote=${lote}&modo=${modo}${naReuniao}`, { method: 'POST' });
-      if (!r.ok) throw new Error('fim ' + r.status);
-      envio.resultado = await r.json();
-      envio.status = 'pronto';
+      await terminarEnvio(lote, modo);
     } catch (e) {
       envio.status = 'erro';
     }
@@ -829,7 +958,7 @@
     }
     if (envio) { if (envio.status !== 'enviando') envio = null; return true; }
     if (escolhendoBib) { escolhendoBib = null; return true; }
-    if (colocando) { colocando = false; return true; }
+    if (colocando) { colocando = false; recentes = null; return true; }
     if (escolhendoJanela) { escolhendoJanela = null; return true; }
     if (novaReuniao) { novaReuniao = null; return true; }
     if (naReuniao && escolhendo) {
@@ -925,6 +1054,10 @@
     lerQrNoApp: () => { if (noApp()) window.AltarApp.lerQr(); },
     outras: () => { verOutras = !verOutras; },
     app: () => { verApp = !verApp; },
+    atualizarApp: () => {
+      atualizacaoApp = { status: 'baixando', pct: 0 };
+      try { window.AltarApp.atualizar(); } catch { atualizacaoApp = { status: 'erro' }; }
+    },
     novaReuniao: () => {
       const p = dados.pastores || [];
       novaReuniao = { pastorId: p.length === 1 ? p[0].id : null, nome: '' };
@@ -948,8 +1081,14 @@
     abrirMusicas: () => { escolhendoMusica = true; },
     catMusica: el => { catMusica = el.dataset.v; },
     abrirEnvio: () => { envio = { status: 'escolher' }; },
-    abrirColocar: () => { colocando = true; },
-    fecharColocar: () => { colocando = false; },
+    abrirColocar: () => { colocando = true; recentes = null; carregarRecentes(); },
+    fecharColocar: () => { colocando = false; recentes = null; },
+    pedirRecentes: () => { if (recentes) recentes.pediu = true; try { window.AltarApp.pedirRecentes(); } catch { /* aplicativo antigo */ } },
+    marcarRecente: el => {
+      const s = recentes.sel, i = s.indexOf(el.dataset.id);
+      if (i >= 0) s.splice(i, 1); else s.push(el.dataset.id);
+    },
+    colocarRecentes: () => mandarRecentes(),
     abrirEnvioReuniao: () => { colocando = false; envio = { status: 'escolher', naReuniao: true }; },
     colocarRecebidos: () => {
       // Abre "Colocar na reunião" já com o que acabou de chegar marcado.

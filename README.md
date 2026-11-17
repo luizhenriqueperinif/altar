@@ -102,7 +102,9 @@ Para ensaiar pelo código, sem instalar nada: `ALTAR_TESTAR_ATUALIZACAO=1 npm st
 
 ## Aplicativo do celular (Android)
 
-O celular não precisa de aplicativo: o QR code do Painel abre o controle no navegador. O aplicativo (`android/`) é o mesmo controle em tela cheia, com três confortos: guarda o endereço do notebook (o QR code é lido uma vez só), procura o notebook sozinho se o roteador trocar o endereço dele e não deixa a tela do celular apagar durante a reunião. As telas continuam vindo do notebook, então atualizar o programa do notebook não exige atualizar o aplicativo.
+O celular não precisa de aplicativo: o QR code do Painel abre o controle no navegador. O aplicativo (`android/`) é o mesmo controle em tela cheia, com quatro confortos: guarda o endereço do notebook (o QR code é lido uma vez só), procura o notebook sozinho se o roteador trocar o endereço dele, não deixa a tela do celular apagar durante a reunião e mostra as últimas fotos e vídeos do celular em **Colocar outra coisa na reunião**, para marcar e mandar sem abrir a galeria. As telas continuam vindo do notebook, então atualizar o programa do notebook não exige atualizar o aplicativo (só as novidades que dependem do celular, como essa das fotos, pedem o aplicativo novo).
+
+Para mostrar as últimas fotos e vídeos, o aplicativo pede a permissão do Android para ver as fotos do celular, só quando a pessoa toca no botão. O navegador não consegue fazer isso (uma página não pode listar a galeria), então ali fica só o botão **Neste celular**. As fotos marcadas vão direto do aplicativo para o notebook pareado, pela rede local.
 
 O aplicativo vai dentro do programa do notebook; o pastor não precisa receber nenhum arquivo:
 
@@ -110,6 +112,8 @@ O aplicativo vai dentro do programa do notebook; o pastor não precisa receber n
 2. Na tela inicial do controle, toque em **Instalar o aplicativo do Altar neste celular** e depois em **Baixar o aplicativo**. O arquivo vem do próprio notebook (`/app/Altar.apk`), sem internet.
 3. Abra o arquivo baixado e instale. O Android pede para permitir a instalação por aquele navegador, porque o aplicativo não vem da loja.
 4. De volta ao navegador, toque em **Abrir no aplicativo**: ele abre já conectado. (Ou abra o Altar no celular e toque em **Ler o QR code**.)
+
+**Atualização do aplicativo.** O aplicativo não vem da loja, então não se atualiza sozinho. Quando o programa do notebook traz um aplicativo mais novo que o do celular, a tela inicial do controle (dentro do aplicativo) mostra **Atualizar o aplicativo**: ele baixa o arquivo do notebook e o Android pergunta se pode atualizar. Na primeira vez o Android também pede para permitir que o Altar instale aplicativos. Quem ainda tem o primeiro aplicativo (anterior à 1.1.4) precisa instalar pelo navegador mais uma vez, pelos passos acima. Para o botão aparecer, cada aplicativo novo precisa de um `versionCode` maior em `android/app/build.gradle`.
 
 Para gerar só o APK: `npm run apk` (sai em `android/app/build/outputs/apk/release/app-release.apk`).
 

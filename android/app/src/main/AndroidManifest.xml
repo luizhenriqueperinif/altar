@@ -8,6 +8,15 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Para mostrar as últimas fotos e vídeos do celular em "Colocar na reunião" (o app pergunta antes). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Para o app se atualizar com a versão nova que vem do notebook (o Android pergunta à pessoa antes de instalar). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- usesCleartextTraffic: o notebook da igreja atende por http na rede Wi-Fi (sem internet). -->
     <application
         android:allowBackup="true"
