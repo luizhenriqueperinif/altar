@@ -155,7 +155,7 @@
       if (atual.arquivo !== src || atual.inicio !== v.inicio) {
         atual.arquivo = src; atual.inicio = v.inicio; atual.salto = v.salto || 0;
         if (video.dataset.src !== src) { video.src = src; video.dataset.src = src; }
-        try { video.currentTime = 0; } catch (e) {}
+        try { video.currentTime = v.t || 0; } catch (e) {}   // 0, ou o ponto em que estava (reunião retomada)
         video.onloadeddata = () => mostrarCamada('video');
         if (video.readyState >= 2) mostrarCamada('video');
       } else if (atual.camada !== 'video') {
@@ -227,7 +227,7 @@
     if (atualAudio.arquivo !== src || atualAudio.inicio !== a.inicio) {
       atualAudio = { arquivo: src, inicio: a.inicio, salto: a.salto || 0, espera: !!a.espera };
       if (audio.dataset.src !== src) { audio.src = src; audio.dataset.src = src; }
-      try { audio.currentTime = 0; } catch (e) {}
+      try { audio.currentTime = a.t || 0; } catch (e) {}   // 0, ou o ponto em que estava (reunião retomada)
     }
     if ((a.salto || 0) !== atualAudio.salto) {
       // Adiantou ou voltou pela barrinha do celular.

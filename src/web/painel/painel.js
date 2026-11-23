@@ -618,7 +618,7 @@
         ${sorteado ? '' : `<span class="nome-linha">${usar(f.id)}</span>`}</div>`).join('');
     const voltar = escondidas ? `<p class="note">Vocês tiraram ${escondidas} ${escondidas === 1 ? 'foto' : 'fotos'} do programa. <button class="btn sm" data-a="mostrarEsperas">${I('voltar')} Trazer de volta</button></p>` : '';
     return `${modo}
-      <p class="note">Estes são os fundos de antes da reunião. Os vídeos passam repetindo; com "Com som", o som do vídeo toca quando a reunião é aberta e sai quando o primeiro item vai para a TV.
+      <p class="note">Estes são os fundos de antes da reunião: entram na TV quando a reunião é aberta (sem reunião aberta, a TV fica na imagem "Seja bem-vindo"). Os vídeos passam repetindo; com "Com som", o som do vídeo toca quando a reunião é aberta e sai quando o primeiro item vai para a TV.
         Uma reunião ainda pode ter um fundo só dela, no botão "Tela de espera" dentro da reunião. Para colocar mais, use "+ Adicionar vídeo ou imagem" ou arraste os arquivos para cá.</p>
       ${grupo('video', 'Vídeos', 'Nenhum vídeo para a espera ainda.')}
       ${grupo('imagem', 'Suas imagens', 'Nenhuma imagem sua para a espera ainda.')}
@@ -939,7 +939,7 @@
       </section>
       <section class="caixa">
         <h2>Tela de espera (fundo antes da reunião)</h2>
-        <p class="note">O que aparece na TV antes e depois da reunião. Escolhe-se na Biblioteca, aba "Tela de espera": um fundo fixo, ou um sorteado a cada reunião.</p>
+        <p class="note">Sem reunião aberta, a TV mostra a imagem "Seja bem-vindo". Quando a reunião é aberta, entra o fundo de espera, até o primeiro item ir para a TV. Escolhe-se na Biblioteca, aba "Tela de espera": um fundo fixo, ou um sorteado a cada reunião.</p>
         ${espera}
         <p class="note"><b>Valendo agora:</b> ${esc(resumoEspera())}</p>
         <div class="acoes"><button class="btn primary" data-a="irParaEspera">${I('biblioteca')} Escolher na Biblioteca</button></div>

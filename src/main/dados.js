@@ -895,10 +895,12 @@ class Dados {
   /**
    * O que a TV mostra quando nada está passando: o fundo escolhido só para esta reunião ou,
    * se não tiver, o de todas as reuniões (fixo ou sorteado); null = a do programa.
+   * Sem reunião aberta é sempre a do programa ("Seja bem-vindo"): o fundo só entra quando a reunião é aberta.
    */
   telaEspera(rid) {
     const r = rid && this.reuniao(rid);
-    const daReuniao = r && this._espera(r.telaEspera);
+    if (!r) return null;
+    const daReuniao = this._espera(r.telaEspera);
     return daReuniao ? { ...daReuniao, daReuniao: true } : this.esperaPadrao();
   }
 

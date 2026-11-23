@@ -688,11 +688,16 @@
     const a = dados.estado.audio;
     const atual = id => a && !a.video && a.bibliotecaId === id;
     const situacao = () => (a.tocando ? 'Tocando' : a.terminou ? 'Terminou' : 'Pausada');
-    // Cada música: toque para tocar; a estrela marca como favorita.
+    // Cada música: toque para tocar; a estrela marca como favorita; o "+" coloca na reunião aberta.
+    const jaNaReuniao = new Set(((dados.reuniao && dados.reuniao.itens) || []).map(i => i.bibliotecaId).filter(Boolean));
+    const por = m => (jaNaReuniao.has(m.id)
+      ? `<button class="btn musica-por ja" data-acao="musicaJaEsta" aria-label="${esc(m.titulo)} já está na reunião">${I('ok')}</button>`
+      : `<button class="btn musica-por" data-acao="porMusicaNaReuniao" data-id="${m.id}" aria-label="Colocar na reunião: ${esc(m.titulo)}">${I('mais')}</button>`);
     const tocar = m => `<div class="musica-item">
         <button class="btn musica-linha ${atual(m.id) ? 'sel' : ''}" data-acao="tocarMusica" data-id="${m.id}"${atual(m.id) ? ' aria-current="true"' : ''}>
           ${I(atual(m.id) ? 'tocando' : 'musica')}<span class="musica-nome">${esc(m.titulo)}</span>${atual(m.id) ? `<span class="musica-tag">${situacao()}</span>` : ''}</button>
-        <button class="btn musica-fav ${m.favorita ? 'sim' : ''}" data-acao="favMusica" data-id="${m.id}" aria-pressed="${!!m.favorita}" aria-label="${m.favorita ? 'Tirar das favoritas' : 'Marcar como favorita'}: ${esc(m.titulo)}">${I('estrela')}</button></div>`;
+        <button class="btn musica-fav ${m.favorita ? 'sim' : ''}" data-acao="favMusica" data-id="${m.id}" aria-pressed="${!!m.favorita}" aria-label="${m.favorita ? 'Tirar das favoritas' : 'Marcar como favorita'}: ${esc(m.titulo)}">${I('estrela')}</button>
+        ${por(m)}</div>`;
     // "Renomear músicas": toque na música e escreva o nome novo.
     const renomear = m => renomeandoMusica && renomeandoMusica.id === m.id
       ? `<div class="musica-renomear">
@@ -737,7 +742,10 @@
         ${agora}
         ${abas}
         ${corpo}
-        ${todas.length ? `<p class="note musica-dica">${I('estrela')} A estrela marca a música como favorita: ela passa a aparecer primeiro.</p>
+        ${todas.length ? `<div class="musica-legenda">
+          <p class="note musica-dica">${I('estrela')} Favorita: a música passa a aparecer primeiro.</p>
+          <p class="note musica-dica">${I('mais')} Coloca na reunião: vira um cartão e fica salva nela.</p>
+          <p class="note musica-dica">${I('ok')} Já está na reunião.</p></div>
         <button class="btn" data-acao="arrumarMusicas">${I('editar')} Renomear músicas</button>` : ''}`;
   }
 
@@ -916,8 +924,14 @@
     const miniatura = x => (x.tipo === 'imagem' || x.tipo === 'pregacao' || (x.tipo === 'video' && x.capa))
       ? `<img src="${conexao.midia(x.tipo === 'video' ? x.capa : x.arquivo)}" alt="" loading="lazy">${x.tipo === 'video' ? `<i class="play">${I('play')}</i>` : ''}`
       : `<span class="ic-grande">${ICONE[x.tipo]}</span>`;
+    // Músicas: em ordem alfabética, com as favoritas na frente (como na aba "Música").
+    const emOrdem = l => { const o = l.slice().sort((x, y) => x.titulo.localeCompare(y.titulo, 'pt-BR', { numeric: true })); return [...o.filter(x => x.favorita), ...o.filter(x => !x.favorita)]; };
     const cartaoBib = x => {
       const n = b.sel.indexOf(x.id) + 1;
+      // Música não tem imagem: uma linha com o nome.
+      if (x.tipo === 'musica') return `<button class="btn musica-linha bib-musica ${n ? 'on' : ''} ${x.favorita ? 'fav' : ''}" data-acao="marcarBib" data-id="${x.id}" aria-pressed="${!!n}">
+        ${I(x.favorita ? 'estrela' : 'musica')}<span class="bib-musica-texto"><span class="musica-nome">${esc(x.titulo)}</span>${naReuniao.has(x.id) ? '<small>já está na reunião</small>' : ''}</span>
+        ${n ? `<b class="ordem">${I('ok')} ${n}</b>` : ''}</button>`;
       return `<button class="bib ${n ? 'on' : ''}" data-acao="marcarBib" data-id="${x.id}">
         <span class="bib-img">${miniatura(x)}${n ? `<b class="ordem">${I('ok')} ${n}</b>` : ''}${x.qtd ? `<i class="qtd">${x.qtd}</i>` : ''}</span>
         <span class="bib-t">${esc(x.titulo)}</span>
@@ -928,7 +942,9 @@
       <div class="painel-corpo" data-scroll="bib-${b.aba}">
         <div class="abas2 abas4">${ABAS_BIB.map(([t, nome]) => `<button class="btn ${b.aba === t ? 'sel' : ''}" data-acao="abaBib" data-v="${t}">${nome} (${qtd(t)})</button>`).join('')}</div>
         <p class="note">Toque para marcar. Entram no fim da reunião, na ordem em que você marcou.</p>
-        ${lista.length ? porDia(lista).map(g => `<div class="eyebrow">${esc(nomeDoDia(g.d))}</div><div class="bibs">${g.itens.map(cartaoBib).join('')}</div>`).join('') : '<p class="note">Nada aqui ainda.</p>'}
+        ${!lista.length ? '<p class="note">Nada aqui ainda.</p>'
+          : b.aba === 'musica' ? `<div class="passagens">${emOrdem(lista).map(cartaoBib).join('')}</div>`
+          : porDia(lista).map(g => `<div class="eyebrow">${esc(nomeDoDia(g.d))}</div><div class="bibs">${g.itens.map(cartaoBib).join('')}</div>`).join('')}
       </div>
       <div class="toolbar"><button class="btn primary" data-acao="colocarBib" ${b.sel.length ? '' : 'disabled'}>${b.sel.length ? `Colocar ${b.sel.length} na reunião${juntar ? ' (separadas)' : ''}` : 'Marque o que vai entrar'}</button>
         ${juntar ? `<button class="btn" data-acao="juntarBib">${I('pregacao')} Juntar numa pregação</button>` : ''}</div>
@@ -1074,7 +1090,15 @@
     if (dados) atualizarIcone();
     if (con.semToken) html = telaSemToken();
     else if (!dados) html = `<div class="pad">${avisoConexao() || '<p class="note">Carregando…</p>'}</div>`;
-    if (dados && dados.estado.reuniaoId !== reuniaoVista) { reuniaoVista = dados.estado.reuniaoId; naInicio = false; }
+    if (dados && dados.estado.reuniaoId !== reuniaoVista) {
+      reuniaoVista = dados.estado.reuniaoId; naInicio = false;
+      // Entrou numa reunião que já está andando (o aplicativo foi aberto de novo): continua no que está na TV.
+      if (reuniaoVista && dados.reuniao && !escolhendo && !escolhendoMusica) {
+        const naTv = itemNaTv();
+        if (dados.versiculo) palavraAberta = true;
+        else if (naTv && naTv.tipo === 'pregacao') pregacaoAberta = true;
+      }
+    }
     if (con.semToken || !dados) { /* sem conexão: já decidido acima */ }
     else if (dados.estado.reuniaoId && dados.reuniao && !naInicio) { confirmarDesconectar = false; perguntandoDono = null; html = telaReuniao() + sobreposicao(); }
     else { if (telegram) fecharTelegram(); arrumando = false; tirandoItem = null; escolhendo = null; palavraAberta = false; pregacaoAberta = false; escolhendoMusica = false; escolhendoBib = null; colocando = false;
@@ -1438,6 +1462,9 @@
       m.favorita = !m.favorita;
       enviar({ cmd: 'favoritarMusica', id: m.id, sim: m.favorita });
     },
+    // Coloca a música no fim da reunião aberta; o "+" vira "já está" assim que o notebook grava.
+    porMusicaNaReuniao: el => { enviar({ cmd: 'colocarDaBiblioteca', bibliotecaIds: [el.dataset.id] }); },
+    musicaJaEsta: () => {},
     arrumarMusicas: () => { arrumandoMusicas = true; renomeandoMusica = null; },
     arrumarMusicasPronto: () => { arrumandoMusicas = false; renomeandoMusica = null; },
     renomearMusica: el => {

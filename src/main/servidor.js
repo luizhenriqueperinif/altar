@@ -7,6 +7,7 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { estadoInicial, aplicar } = require('./conducao');
+const retomada = require('./retomada');
 const biblia = require('./biblia');
 const tg = require('./telegram');
 const tgConta = require('./telegramConta');
@@ -101,7 +102,7 @@ function versaoDoApk(apk) {
   return null;
 }
 
-function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens = null, pptParaImagens = null, apk = null, aoErrar = () => {} }) {
+function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens = null, pptParaImagens = null, apk = null, aoErrar = () => {}, agora = () => Date.now() }) {
   // O aplicativo do Android vai junto com o programa do notebook; o celular baixa daqui (ver /app/Altar.apk).
   const temApk = !!apk && fs.existsSync(apk);
   const appVersao = temApk ? versaoDoApk(apk) : null;
@@ -144,6 +145,26 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     existe: (v, r) => biblia.existe(v, r),
     vizinho: (v, r, d) => biblia.vizinho(v, r, d),
   };
+
+  // O programa fechou no meio da reunião e abriu de novo logo depois: ela volta de onde parou (ver retomada.js).
+  estado = retomada.estadoParaRetomar(retomada.ler(dados.pasta), agora(), ctx) || estado;
+  // Enquanto a reunião está aberta, o que está na TV fica guardado no disco: logo depois de cada mudança
+  // e de tempos em tempos (para valer a hora em que o programa ainda estava aberto).
+  let guardaMarcada = null, temGuarda = !!estado.reuniaoId;
+  const guardarAgora = () => {
+    if (guardaMarcada) { clearTimeout(guardaMarcada); guardaMarcada = null; }
+    if (!estado.reuniaoId && !temGuarda) return;
+    retomada.gravar(dados.pasta, estado, agora());
+    temGuarda = !!estado.reuniaoId;
+  };
+  const guardarLogo = () => {
+    if (!estado.reuniaoId) return guardarAgora();   // encerrou: esquece na hora
+    if (guardaMarcada) return;
+    guardaMarcada = setTimeout(guardarAgora, 1500);
+    guardaMarcada.unref?.();
+  };
+  const guardaDeTempos = setInterval(() => { if (estado.reuniaoId) guardarAgora(); }, 20000);
+  guardaDeTempos.unref?.();
 
   /** A música que está tocando (ou parada no fim), com o arquivo para o Telão. */
   function musicaTocando() {
@@ -423,6 +444,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
   function transmitir() {
     // O vídeo da espera que tocava com som foi trocado, tirado ou perdeu o som: o som sai junto.
     if (estado.audio && estado.audio.video) estado = aplicar(estado, { cmd: 'acertarSomDaEspera' }, ctx);
+    guardarLogo();
     let simples, completo;
     for (const c of wss.clients) {
       if (c.readyState !== 1) continue;
@@ -763,7 +785,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     /** Chegou imagem nova de vídeo do Telegram: o celular que está com a lista aberta pede de novo. */
     avisarTelegram() { for (const c of wss.clients) if (c.papel === 'controle') mandar(c, { tipo: 'telegramMudou' }); },
     definirTv(status, qtdTelas) { tvStatus = status; telas = qtdTelas || 1; transmitir(); },
-    fechar() { for (const c of wss.clients) c.terminate(); wss.close(); server.close(); },
+    fechar() { clearInterval(guardaDeTempos); guardarAgora(); for (const c of wss.clients) c.terminate(); wss.close(); server.close(); },
   };
 }
 

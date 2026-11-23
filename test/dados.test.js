@@ -552,7 +552,9 @@ test('fundo de espera fixo: um da Biblioteca ou foto do programa vale para todas
   assert.equal(d.definirEsperaPadrao('v1'), true);
   assert.equal(d.arquivoDaBiblioteca('v1').espera, true);      // entra na aba "Tela de espera"
   assert.equal(d.telaEspera(r.id).arquivo, 'v1.mp4');
-  assert.equal(d.telaEspera(null).arquivo, 'v1.mp4');          // sem reunião aberta também
+  assert.equal(d.telaEspera(null), null);                       // sem reunião aberta: a do programa ("Seja bem-vindo")
+  assert.equal(d.telaEspera('nao-existe'), null);
+  assert.equal(d.somDaEspera(null), null);
   assert.equal(d.telaEspera(r.id).daReuniao, undefined);
   // a reunião com um fundo só dela ganha do fixo
   d.editarReuniao(r.id, { telaEspera: 'i1' });
@@ -651,8 +653,8 @@ test('a tela de espera antiga de Configurações vira um fundo da Biblioteca e c
   e0.d.config.telaEspera = 'antiga.png';
   e0.salvar();
   const e = new Dados(pasta2);
-  assert.equal(e.telaEspera(null).arquivo, 'antiga.png');
-  assert.equal(e.telaEspera(null).video, undefined);
+  assert.equal(e.esperaPadrao().arquivo, 'antiga.png');
+  assert.equal(e.esperaPadrao().video, undefined);
 });
 
 test('"apagar antigos" não apaga fundo de espera', () => {
