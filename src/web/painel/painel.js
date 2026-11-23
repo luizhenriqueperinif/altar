@@ -189,6 +189,8 @@
     </div>`;
   }
 
+  // As reuniões do dia, pelo horário: o nome é "Reunião das 08:00" e assim por diante.
+  const HORAS_DAS_REUNIOES = ['08:00', '12:00', '15:00', '18:00', '19:30'];
   function formReuniao() {
     const f = S.form;
     const origem = f.copiarDe && M.reunioesCompletas.find(r => r.id === f.copiarDe);
@@ -209,8 +211,12 @@
         <button type="button" class="btn sm" data-a="formDia" data-v="${M.hoje}">Hoje</button>
         <button type="button" class="btn sm" data-a="formDia" data-v="${proximoDomingo(M.hoje)}">Próximo domingo</button>
       </div>
-      <label class="campo"><span>Nome (se quiser)</span>
-        <input type="text" id="f-nome" value="${esc(f.nome)}" placeholder="Ex.: Reunião de libertação" maxlength="60"></label>
+      <div class="campo"><span>Qual reunião é? Um toque põe o nome e o horário</span>
+        <div class="escolha">
+          ${HORAS_DAS_REUNIOES.map(h => `<button type="button" class="btn ${f.nome === 'Reunião das ' + h ? 'sel' : ''}" data-a="formReuniaoDas" data-v="${h}">Reunião das ${h}</button>`).join('')}
+        </div></div>
+      <label class="campo"><span>Nome (se quiser outro)</span>
+        <input type="text" id="f-nome" value="${esc(f.nome)}" placeholder="Ex.: Reunião das 19:30" maxlength="60"></label>
       <div class="acoes">
         <button type="submit" class="btn primary">${f.modo === 'editar' ? 'Salvar' : 'Criar e começar a montar'}</button>
         <button type="button" class="btn" data-a="cancelarForm">Cancelar</button>
@@ -1126,6 +1132,7 @@
     cancelarForm: () => { S.form = null; },
     formPastor: v => { lerForm(); S.form.pastorId = S.form.pastorId === v ? null : v; },
     formDia: v => { lerForm(); S.form.data = v; },
+    formReuniaoDas: v => { lerForm(); S.form.hora = v; S.form.nome = 'Reunião das ' + v; },
     abrir: v => { S.aberta = v; S.form = null; window.scrollTo({ top: 0 }); },
     fechar: () => { S.aberta = null; S.form = null; },
     apagarReuniao: v => {

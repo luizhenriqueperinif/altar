@@ -334,8 +334,8 @@
     desenhar(true);
   };
 
-  // Nomes da semana da igreja; o do dia vem primeiro.
-  const NOMES_DA_SEMANA = ['Encontro com Deus', 'Reunião da prosperidade', 'Reunião de cura', 'Reunião dos filhos de Deus', 'Reunião da família', 'Reunião de libertação', 'Terapia do amor'];
+  // Os nomes para escolher em "Criar reunião agora": as reuniões do dia, pelo horário.
+  const NOMES_DAS_REUNIOES = ['Reunião das 08:00', 'Reunião das 12:00', 'Reunião das 15:00', 'Reunião das 18:00', 'Reunião das 19:30'];
   // ---------- de quem é este celular ----------
   // O celular guarda o nome do pastor: no aplicativo fica guardado no próprio aplicativo (vale mesmo se o
   // endereço do notebook mudar); no navegador, fica no navegador.
@@ -375,8 +375,7 @@
 
   function telaNovaReuniao() {
     const n = novaReuniao;
-    const dia = new Date(dados.hoje + 'T12:00').getDay();
-    const nomes = [...new Set([NOMES_DA_SEMANA[dia], ...(dados.nomesReunioes || []).slice().reverse(), ...NOMES_DA_SEMANA])].slice(0, 8);
+    const nomes = NOMES_DAS_REUNIOES;
     return `<div class="painel" role="dialog" aria-label="Criar reunião">
       <div class="painel-topo"><h2>Criar reunião agora</h2><button class="btn" data-acao="fecharNovaReuniao">${I('fechar')} Fechar</button></div>
       <div class="painel-corpo nova-reuniao" data-scroll="nova">
