@@ -25,6 +25,7 @@ Antes, conduzir uma reunião exigia alguém no computador abrindo arquivos, troc
 ## Funcionalidades
 
 - **Reunião em cartões:** vídeos, imagens, músicas, pregação (várias imagens com ◀ ▶) e convites
+- **Aba "Música" do celular:** tocar numa música começa a tocar sem sair da aba; no alto fica o "Tocando agora" com pausar e parar; a lista vem em ordem alfabética, com as favoritas primeiro. A estrela marca a favorita (também na Biblioteca do notebook) e "Renomear músicas" troca o nome pelo celular.
 - **O celular lembra de quem ele é:** na primeira vez, o celular pergunta o nome do pastor (toca na lista ou escreve; nome novo entra na lista de pastores do notebook) e guarda. O nome aparece no alto da tela, só para o pastor ver que o celular é o dele: dois pastores podem mexer na mesma reunião, e ninguém escolhe "quem vai conduzir"
 - **Arrumar a reunião pelo celular:** em "Mudar a ordem ou tirar um item", o pastor arrasta os itens pelas três barrinhas para mudar a ordem, ou tira um item pela lixeira (o que está na TV não sai; o arquivo continua na Biblioteca). O botão de voltar do celular volta uma tela por vez e só sai do aplicativo na tela inicial
 - **Pregação a partir de imagens, PDF ou PowerPoint:** várias imagens marcadas (na Biblioteca ou no celular) viram uma pregação só; no notebook dá para subir, descer, tirar e colocar imagens. O PowerPoint é aberto pelo PowerPoint do próprio notebook (ou pelo LibreOffice); sem nenhum dos dois, o programa pede o arquivo em PDF
@@ -34,6 +35,7 @@ Antes, conduzir uma reunião exigia alguém no computador abrindo arquivos, troc
 - **Fotos e vídeos do Telegram:** as conversas aparecem como no Telegram (pessoas, grupos e canais), no celular e no notebook; o pastor abre uma, toca na foto ou no vídeo e o programa baixa no notebook
 - **Janela do notebook na TV** (YouTube, Telegram...): o celular toca, pausa, adianta e mexe no volume só daquele programa
 - **Controles de culto:** apagar a TV, volume, tela de espera com a logo da igreja e encerrar
+- **Fundo de espera com som:** o vídeo da tela de espera pode tocar com o próprio som (chave "Tocar o som deste vídeo"). Começa quando a reunião é aberta, sai abaixando quando o primeiro item vai para a TV, e o celular pausa e controla o volume. Os fundos ficam na Biblioteca, aba "Tela de espera": **fixo** (sempre o mesmo) ou **sorteado** (um diferente a cada reunião aberta, sem repetir o anterior)
 - **Instalador para Windows** que já libera o programa no firewall e abre sozinho quando o notebook liga
 - **Acesso protegido:** só quem leu o QR code (que leva uma chave aleatória) consegue controlar a TV
 

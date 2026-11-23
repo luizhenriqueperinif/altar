@@ -440,3 +440,27 @@ main > #aba-reserva { max-width: none; }
 .sub-abas.abas-test .btn { border: 0; border-radius: 999px; padding-inline: 22px; }
 .sub-abas.abas-test .btn:not(.sel) { background: transparent; color: var(--navy-muted); }
 .sub-abas.abas-test .btn.sel { background: var(--surface); color: var(--navy); box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+
+/* Chave "Tocar o som deste vídeo" (tela de espera) */
+.chave-som { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 760px; margin: 14px 0 6px; padding: 14px 16px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.chave-som b { display: block; font-size: 17px; }
+.chave-som .note { display: block; margin: 2px 0 0; }
+.chave-bola { flex: none; width: 58px; height: 32px; border-radius: 999px; background: #b9bfcc; position: relative; transition: background .15s; }
+.chave-bola::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: left .15s; }
+.chave-som.ligada { border-color: var(--navy); }
+.chave-som.ligada .chave-bola { background: var(--navy); }
+.chave-som.ligada .chave-bola::after { left: 29px; }
+
+/* Aba "Tela de espera": fundo fixo ou sorteado, e o som de cada vídeo */
+.espera-modo { margin-bottom: 14px; }
+.espera-modo h2 { margin-top: 0; }
+.espera-modo .sub-abas { margin: 8px 0; }
+.espera-modo .sub-abas .btn.sel { background: var(--navy); border-color: var(--navy); color: var(--navy-ink); }
+.arq.escolhido { border: 2px solid var(--navy); }
+.tag-espera { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 4px 10px; border-radius: 10px; background: var(--navy); color: var(--navy-ink); font-weight: 700; font-size: 15px; }
+.tag-espera .i { width: 18px; height: 18px; }
+.arq .acoes .btn.som-espera.ligada { border-color: var(--navy); background: var(--surface-2); color: var(--navy); font-weight: 700; }
+
+/* Música favorita */
+.arq .acoes .btn.favorita.sim { color: #8a5a10; border-color: #e3c07a; background: #fdf6e3; font-weight: 700; }
+.arq .acoes .btn.favorita.sim .i { fill: currentColor; }

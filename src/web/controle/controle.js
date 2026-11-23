@@ -17,6 +17,8 @@
   let palavraAberta = false;   // painel da Palavra aberto (setas + passagens preparadas)
   let pregacaoAberta = false;  // painel da Pregação aberto (◀ ▶ + miniaturas)
   let escolhendoMusica = false; // lista de músicas para tocar avulsa
+  let arrumandoMusicas = false; // na aba "Música": escolhendo uma música para dar outro nome
+  let renomeandoMusica = null;  // a música que está ganhando outro nome: { id, titulo }
   let envio = null;            // mandar arquivos do celular para a Biblioteca: { status, atual, total, pct, resultado, modo }
   let colocando = false;       // "Colocar na reunião": a pergunta "onde está?" (no notebook ou neste celular)
   let arrumando = false;       // reunião: mudando a ordem dos itens ou tirando algum
@@ -106,7 +108,7 @@
 
   function rotuloTv() {
     const e = dados.estado;
-    if (e.tv.tipo === 'espera') return 'Tela de espera';
+    if (e.tv.tipo === 'espera') return e.audio && e.audio.video ? 'Tela de espera · com som' : 'Tela de espera';
     if (e.tv.tipo === 'preto') return 'TV apagada';
     if (e.tv.tipo === 'janela') return e.tv.nome;
     if (dados.versiculo) return `${dados.versiculo.rotulo} · ${dados.versiculo.versao}${dados.versiculo.avulso ? ' (fora do planejado)' : ''}`;
@@ -149,9 +151,9 @@
     if (a && dados.musica) {
       x = a; k = 'a';
       midia = `${a.tocando
-        ? `<button class="btn" data-cmd="audioPausar" aria-label="Pausar a música">${I('pause')}</button>`
+        ? `<button class="btn" data-cmd="audioPausar" aria-label="${a.video ? 'Pausar o som da tela de espera' : 'Pausar a música'}">${I('pause')}</button>`
         : `<button class="btn primary" data-cmd="audioContinuar" aria-label="${a.terminou ? 'Tocar de novo' : 'Tocar a música'}">${I(a.terminou ? 'denovo' : 'play')}</button>`}
-        <div class="hud-nome">${esc(dados.musica.titulo)}</div>`;
+        <div class="hud-nome">${a.video ? '<small>Som da tela de espera</small>' : ''}${esc(dados.musica.titulo)}</div>`;
     } else if (v && it && it.tipo === 'video') {
       x = v; k = 'v';
       midia = `${v.tocando
@@ -566,6 +568,8 @@
       <button class="btn primary huge" data-acao="arrPronto">${I('ok')} Pronto</button>`;
     return `${controleJanela()}
       <div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([quemAqui(r), r.hora].filter(Boolean).join(' · '))}</span></div>
+      ${dados.estado.audio && dados.estado.audio.video && dados.estado.audio.tocando && dados.estado.tv.tipo === 'espera'
+        ? '<p class="note aviso-espera">O fundo de espera está tocando na TV. Ele sai sozinho quando o primeiro item for para a TV.</p>' : ''}
       <div class="eyebrow">Toque para mostrar na TV</div>
       <div class="cards">${r.itens.length ? r.itens.map(cartao).join('') : '<p class="note">Esta reunião ainda não tem itens.</p>'}</div>
       <section class="mais-opcoes" aria-label="Colocar ou mostrar outras coisas">
@@ -672,21 +676,69 @@
   // ---------- Música avulsa: qualquer música da Biblioteca ----------
   let catMusica = 'todas';      // categoria escolhida na lista de músicas do celular
   function telaMusicas() {
-    const cats = (dados.categorias || []).filter(c => (dados.musicas || []).some(m => m.categoria === c.id));
-    const semCat = (dados.musicas || []).some(m => !m.categoria);
+    const ordem = (x, y) => x.titulo.localeCompare(y.titulo, 'pt-BR', { numeric: true });
+    const todas = (dados.musicas || []).slice().sort(ordem);
+    const cats = (dados.categorias || []).filter(c => todas.some(m => m.categoria === c.id));
+    const daCat = m => cats.some(c => c.id === m.categoria);
+    const semCat = todas.some(m => !daCat(m));
     if (catMusica !== 'todas' && catMusica !== 'sem' && !cats.some(c => c.id === catMusica)) catMusica = 'todas';
-    const lista = (dados.musicas || []).filter(m => catMusica === 'todas' || (catMusica === 'sem' ? !m.categoria : m.categoria === catMusica));
+    const lista = todas.filter(m => catMusica === 'todas' || (catMusica === 'sem' ? !daCat(m) : m.categoria === catMusica));
     const aba = (v, nome) => `<button class="btn ${catMusica === v ? 'sel' : ''}" data-acao="catMusica" data-v="${v}">${esc(nome)}</button>`;
     const abas = cats.length ? `<div class="cats-musica">${aba('todas', 'Todas')}${cats.map(c => aba(c.id, c.nome)).join('')}${semCat ? aba('sem', 'Outras') : ''}</div>` : '';
     const a = dados.estado.audio;
-    const atual = id => a && a.bibliotecaId === id;
-    return `<h2 class="m-titulo">Tocar uma música</h2>
-        <p class="note">A TV continua mostrando o que está nela.</p>
-        ${a ? `<button class="btn danger" data-cmd="audioParar">${I('parar')} Parar a música que está tocando</button>` : ''}
+    const atual = id => a && !a.video && a.bibliotecaId === id;
+    const situacao = () => (a.tocando ? 'Tocando' : a.terminou ? 'Terminou' : 'Pausada');
+    // Cada música: toque para tocar; a estrela marca como favorita.
+    const tocar = m => `<div class="musica-item">
+        <button class="btn musica-linha ${atual(m.id) ? 'sel' : ''}" data-acao="tocarMusica" data-id="${m.id}"${atual(m.id) ? ' aria-current="true"' : ''}>
+          ${I(atual(m.id) ? 'tocando' : 'musica')}<span class="musica-nome">${esc(m.titulo)}</span>${atual(m.id) ? `<span class="musica-tag">${situacao()}</span>` : ''}</button>
+        <button class="btn musica-fav ${m.favorita ? 'sim' : ''}" data-acao="favMusica" data-id="${m.id}" aria-pressed="${!!m.favorita}" aria-label="${m.favorita ? 'Tirar das favoritas' : 'Marcar como favorita'}: ${esc(m.titulo)}">${I('estrela')}</button></div>`;
+    // "Renomear músicas": toque na música e escreva o nome novo.
+    const renomear = m => renomeandoMusica && renomeandoMusica.id === m.id
+      ? `<div class="musica-renomear">
+          <input type="text" id="musica-nome" class="campo-cel" value="${esc(renomeandoMusica.titulo)}" maxlength="80" autocomplete="off" aria-label="Nome da música">
+          <div class="ta-botoes"><button class="btn" data-acao="renomearNao">Cancelar</button><button class="btn primary" data-acao="renomearSim">${I('ok')} Salvar</button></div></div>`
+      : `<button class="btn musica-linha" data-acao="renomearMusica" data-id="${m.id}">${I('editar')}<span class="musica-nome">${esc(m.titulo)}</span></button>`;
+    const linha = arrumandoMusicas ? renomear : tocar;
+    // Em cima, o que está tocando, com pausar e parar ali mesmo.
+    const agora = a && dados.musica
+      ? `<div class="tocando-agora">
+          <div class="ta-texto"><small>${a.video ? 'Som da tela de espera' : situacao() + (a.tocando ? ' agora' : '')}</small><b>${esc(dados.musica.titulo)}</b></div>
+          <div class="ta-botoes">${a.tocando
+            ? `<button class="btn" data-cmd="audioPausar">${I('pause')} Pausar</button>`
+            : `<button class="btn" data-cmd="audioContinuar">${I(a.terminou ? 'denovo' : 'play')} ${a.terminou ? 'Tocar de novo' : 'Continuar'}</button>`}
+            <button class="btn danger" data-cmd="audioParar">${I('parar')} Parar</button></div></div>`
+      : '<p class="note">Toque numa música para tocar. A TV continua mostrando o que está nela.</p>';
+    // Embaixo, as músicas em ordem alfabética. Em "Todas": as favoritas primeiro, depois o resto (por categoria, se houver).
+    const bloco = (nome, l) => `<div class="eyebrow musica-grupo">${esc(nome)} · ${l.length}</div><div class="passagens">${l.map(linha).join('')}</div>`;
+    let corpo;
+    if (!todas.length) corpo = '<p class="note">Nenhuma música na Biblioteca ainda. Coloque as músicas pelo notebook.</p>';
+    else if (!lista.length) corpo = '<p class="note">Nenhuma música nesta categoria.</p>';
+    else if (catMusica === 'todas') {
+      const favoritas = lista.filter(m => m.favorita), resto = lista.filter(m => !m.favorita);
+      const grupos = [];
+      if (favoritas.length) grupos.push(['Favoritas', favoritas]);
+      if (cats.length) grupos.push(...cats.map(k => [k.nome, resto.filter(m => m.categoria === k.id)]), ['Outras', resto.filter(m => !daCat(m))]);
+      else if (favoritas.length) grupos.push(['Outras músicas', resto]);
+      const com = grupos.filter(g => g[1].length);
+      corpo = com.length ? com.map(([nome, l]) => bloco(nome, l)).join('') : `<div class="passagens">${lista.map(linha).join('')}</div>`;
+    } else {
+      // Dentro de uma categoria: as favoritas vêm na frente.
+      corpo = `<div class="passagens">${[...lista.filter(m => m.favorita), ...lista.filter(m => !m.favorita)].map(linha).join('')}</div>`;
+    }
+    if (arrumandoMusicas) {
+      return `<h2 class="m-titulo">Renomear músicas</h2>
+        <p class="note">Toque na música que quer renomear e escreva o nome novo.</p>
         ${abas}
-        ${lista.length
-          ? `<div class="passagens">${lista.map(m => `<button class="btn ${atual(m.id) ? 'sel' : ''}" data-acao="tocarMusica" data-id="${m.id}">${I(atual(m.id) ? 'tocando' : 'musica')} ${esc(m.titulo)}</button>`).join('')}</div>`
-          : '<p class="note">Nenhuma música na Biblioteca ainda. Coloque as músicas pelo notebook.</p>'}`;
+        ${corpo}
+        <button class="btn primary huge" data-acao="arrumarMusicasPronto">${I('ok')} Pronto</button>`;
+    }
+    return `<h2 class="m-titulo">Músicas${todas.length ? ` <span class="musica-qt">${todas.length}</span>` : ''}</h2>
+        ${agora}
+        ${abas}
+        ${corpo}
+        ${todas.length ? `<p class="note musica-dica">${I('estrela')} A estrela marca a música como favorita: ela passa a aparecer primeiro.</p>
+        <button class="btn" data-acao="arrumarMusicas">${I('editar')} Renomear músicas</button>` : ''}`;
   }
 
   // ---------- Mandar arquivos do celular para o notebook ----------
@@ -1048,7 +1100,7 @@
     chaveTela = chave;
     const rolagem = {};
     app.querySelectorAll('[data-scroll]').forEach(el => { rolagem[el.dataset.scroll] = el.scrollTop; });
-    const campo = document.activeElement && ['nr-nome', 'dono-nome'].includes(document.activeElement.id) ? document.activeElement.id : null;
+    const campo = document.activeElement && ['nr-nome', 'dono-nome', 'musica-nome'].includes(document.activeElement.id) ? document.activeElement.id : null;
     const digitando = campo ? document.activeElement.selectionStart : null;
     app.innerHTML = html;
     if (campo && document.getElementById(campo)) { const i = document.getElementById(campo); i.focus(); i.setSelectionRange(digitando, digitando); }
@@ -1092,6 +1144,8 @@
       else escolhendo = null;
       return true;
     }
+    if (renomeandoMusica) { renomeandoMusica = null; return true; }
+    if (arrumandoMusicas) { arrumandoMusicas = false; return true; }
     if (naReuniao && (palavraAberta || pregacaoAberta || escolhendoMusica)) { palavraAberta = false; pregacaoAberta = false; escolhendoMusica = false; return true; }
     if (naReuniao) { naInicio = true; arrumando = false; tirandoItem = null; return true; }
     if (verApp) { verApp = false; return true; }
@@ -1275,7 +1329,7 @@
       if (dados.versiculo) palavraAberta = true;
       else escolhendo = { etapa: 'livro', test: 'AT' };
     },
-    navMusica: () => { escolhendoMusica = true; escolhendo = null; palavraAberta = false; pregacaoAberta = false; },
+    navMusica: () => { escolhendoMusica = true; escolhendo = null; palavraAberta = false; pregacaoAberta = false; arrumandoMusicas = false; renomeandoMusica = null; },
     encerrar: () => { confirmarEncerrar = true; },
     // Arrumar a reunião pelo celular: ordem dos itens e tirar um item
     arrumar: () => { arrumando = true; tirandoItem = null; },
@@ -1377,7 +1431,30 @@
     envioJuntas: () => { const a = envio.arquivos; envio.arquivos = null; enviarArquivos(a, 'pregacao'); },
     fecharEnvio: () => { envio = null; },
     fecharMusicas: () => { escolhendoMusica = false; },
-    tocarMusica: el => { enviar({ cmd: 'tocarMusica', bibliotecaId: el.dataset.id }); escolhendoMusica = false; },
+    // Favorita e nome novo: já mostram na tela enquanto o notebook grava.
+    favMusica: el => {
+      const m = (dados.musicas || []).find(x => x.id === el.dataset.id);
+      if (!m) return;
+      m.favorita = !m.favorita;
+      enviar({ cmd: 'favoritarMusica', id: m.id, sim: m.favorita });
+    },
+    arrumarMusicas: () => { arrumandoMusicas = true; renomeandoMusica = null; },
+    arrumarMusicasPronto: () => { arrumandoMusicas = false; renomeandoMusica = null; },
+    renomearMusica: el => {
+      const m = (dados.musicas || []).find(x => x.id === el.dataset.id);
+      if (!m) return;
+      renomeandoMusica = { id: m.id, titulo: m.titulo };
+      setTimeout(() => { const i = document.getElementById('musica-nome'); if (i) { i.focus(); i.select(); } }, 60);
+    },
+    renomearNao: () => { renomeandoMusica = null; },
+    renomearSim: () => {
+      if (!renomeandoMusica) return;
+      const titulo = String(renomeandoMusica.titulo || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      const m = (dados.musicas || []).find(x => x.id === renomeandoMusica.id);
+      if (titulo && m && titulo !== m.titulo) { m.titulo = titulo; enviar({ cmd: 'renomearMusica', id: m.id, titulo }); }
+      renomeandoMusica = null;
+    },
+    tocarMusica: el => { enviar({ cmd: 'tocarMusica', bibliotecaId: el.dataset.id }); },   // continua na aba "Música"
     passagem: el => { enviar({ cmd: 'mostrarPassagem', itemId: el.dataset.item, passagemId: el.dataset.p }); palavraAberta = true; },
     fecharVerso: () => { palavraAberta = false; },
     irVersiculo: el => enviar({ cmd: 'irVersiculo', v: Number(el.dataset.v) }),
@@ -1466,9 +1543,13 @@
   });
 
   // Escolheu os arquivos no celular: já começa a mandar.
+  app.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && ev.target.id === 'musica-nome') { ev.preventDefault(); ACOES.renomearSim(); desenhar(true); }
+  });
   app.addEventListener('input', ev => {
     if (ev.target.id === 'nr-nome' && novaReuniao) novaReuniao.nome = ev.target.value;
     if (ev.target.id === 'dono-nome' && perguntandoDono) perguntandoDono.nome = ev.target.value;
+    if (ev.target.id === 'musica-nome' && renomeandoMusica) renomeandoMusica.titulo = ev.target.value;
   });
   app.addEventListener('change', ev => {
     const input = ev.target.closest('input[data-envio]');

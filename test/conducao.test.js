@@ -348,3 +348,34 @@ test('trocar a versão da Bíblia: vale para o que está na TV e para os próxim
   assert.equal(aplicar(e, { cmd: 'encerrar' }, com).versao, undefined);
   assert.equal(aplicar(e, { cmd: 'escolherReuniao', id: 'r1' }, com).versao, undefined);
 });
+
+test('vídeo da espera com som: começa ao abrir a reunião, no lugar da música, e sai quando algo vai para a TV', () => {
+  const c = { ...ctx, musicaEspera: () => 'b-oracao', somDaEspera: rid => (rid === 'r1' ? 'v-fundo' : null) };
+  const sem = { ...c, somDaEspera: () => null };
+  const e1 = aplicar(estadoInicial(), { cmd: 'escolherReuniao', id: 'r1' }, c);
+  assert.equal(e1.tv.tipo, 'espera');
+  assert.equal(e1.audio.bibliotecaId, 'v-fundo');
+  assert.equal(e1.audio.video, true);
+  assert.equal(e1.audio.espera, true);
+  assert.equal(e1.audio.tocando, true);
+  // o pausar do celular continua valendo
+  assert.equal(aplicar(e1, { cmd: 'audioPausar' }, c).audio.tocando, false);
+  // algo vai para a TV: o som da espera sai
+  const e2 = aplicar(e1, { cmd: 'mostrar', itemId: 'img' }, c);
+  assert.equal(e2.audio, null);
+  // a TV voltou para a espera no meio da reunião: só a imagem, o som não volta sozinho
+  const deVolta = { ...e2, tv: { tipo: 'espera' } };
+  assert.equal(aplicar(deVolta, { cmd: 'acertarSomDaEspera' }, c), deVolta);
+  // ligaram a chave com a TV na espera: o som começa
+  assert.equal(aplicar(deVolta, { cmd: 'acertarSomDaEspera', ligar: true }, c).audio.video, true);
+  // ...mas não com outra coisa na TV
+  assert.equal(aplicar(e2, { cmd: 'acertarSomDaEspera', ligar: true }, c), e2);
+  // trocaram o vídeo da espera ou desligaram a chave: o som sai
+  assert.equal(aplicar(e1, { cmd: 'acertarSomDaEspera' }, sem).audio, null);
+  // sem vídeo com som, vale a música da espera, como antes
+  const e3 = aplicar(estadoInicial(), { cmd: 'escolherReuniao', id: 'r1' }, sem);
+  assert.equal(e3.audio.bibliotecaId, 'b-oracao');
+  assert.equal(e3.audio.video, undefined);
+  // ligaram a chave enquanto a música da espera tocava: passa para o som do vídeo
+  assert.equal(aplicar(e3, { cmd: 'acertarSomDaEspera', ligar: true }, c).audio.bibliotecaId, 'v-fundo');
+});

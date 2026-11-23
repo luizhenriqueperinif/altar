@@ -68,14 +68,32 @@
     if (info.logo) { const s = '/logo.png?v=' + encodeURIComponent(info.logo); if (logo.dataset.src !== s) { logo.src = s; logo.dataset.src = s; } logo.hidden = false; }
     else logo.hidden = true;
     const esperaVideo = $('espera-video');
+    const som = estado.audio && estado.audio.video ? estado.audio : null;
+    naEspera = estado.tv.tipo === 'espera';
     if (esp && esp.video) {
-      // Vídeo da espera: sem som, em repetição; só roda enquanto a TV está na espera.
+      // Vídeo da espera: em repetição; só roda enquanto a TV está na espera.
       const src = conexao.midia(esp.arquivo);
       if (esperaVideo.dataset.src !== src) { esperaVideo.src = src; esperaVideo.dataset.src = src; }
       esperaVideo.hidden = false; esperaImg.hidden = true; $('espera-padrao').hidden = true;
-      if (estado.tv.tipo === 'espera') { if (esperaVideo.paused) esperaVideo.play().catch(() => {}); }
-      else if (!esperaVideo.paused) esperaVideo.pause();
+      if (som && esp.som) {
+        // Com o som do próprio vídeo: o tocar/pausar, a barrinha e o volume do celular mandam nele.
+        pararAbaixandoEspera();
+        esperaVideo.muted = false;
+        esperaVideo.volume = Math.max(0, Math.min(1, estado.volume / 10));
+        if (somEspera.inicio !== som.inicio) { somEspera = { inicio: som.inicio, salto: som.salto || 0 }; try { esperaVideo.currentTime = som.t || 0; } catch (e) {} }
+        if ((som.salto || 0) !== somEspera.salto) { somEspera.salto = som.salto || 0; try { esperaVideo.currentTime = som.t; } catch (e) {} }
+        if (som.tocando) { if (esperaVideo.paused) esperaVideo.play().catch(() => {}); }
+        else if (!esperaVideo.paused) esperaVideo.pause();
+      } else if (somEspera.inicio != null) {
+        // O som da espera acabou (algo foi para a TV, ou pararam): sai abaixando e o vídeo volta a ficar sem som.
+        somEspera = { inicio: null, salto: 0 };
+        abaixarSomDaEspera();
+      } else if (!abaixandoEspera) {
+        if (naEspera) { if (esperaVideo.paused) esperaVideo.play().catch(() => {}); }
+        else if (!esperaVideo.paused) esperaVideo.pause();
+      }
     } else {
+      pararAbaixandoEspera(); somEspera = { inicio: null, salto: 0 }; esperaVideo.muted = true; esperaVideo.volume = 1;
       if (!esperaVideo.paused) esperaVideo.pause();
       if (esperaVideo.dataset.src) { esperaVideo.removeAttribute('src'); esperaVideo.dataset.src = ''; esperaVideo.load(); }
       esperaVideo.hidden = true;
@@ -90,7 +108,7 @@
 
     video.volume = Math.max(0, Math.min(1, estado.volume / 10));
     if (!abaixando) audio.volume = video.volume;
-    aplicarAudio(estado.audio, msg.musica);
+    aplicarAudio(som ? null : estado.audio, msg.musica);   // o som do vídeo da espera toca no próprio vídeo
 
     if (estado.tv.tipo === 'janela') { pararVideo(); mostrarJanela(estado.tv.fonteId); return; }
     if (fonteAtual) pararJanela();
@@ -151,6 +169,36 @@
       if (!v.tocando && !video.paused) video.pause();
     }
   }
+
+  // O som do vídeo da espera também sai abaixando devagar; depois o vídeo fica sem som (e para, se a TV já saiu da espera).
+  const videoEspera = $('espera-video');
+  let somEspera = { inicio: null, salto: 0 }, abaixandoEspera = null, naEspera = true;
+  function fimDoSomDaEspera() {
+    videoEspera.muted = true; videoEspera.volume = 1;
+    if (naEspera) { if (videoEspera.paused) videoEspera.play().catch(() => {}); }
+    else if (!videoEspera.paused) videoEspera.pause();
+  }
+  function pararAbaixandoEspera() { if (abaixandoEspera) { clearInterval(abaixandoEspera); abaixandoEspera = null; } }
+  function abaixarSomDaEspera() {
+    pararAbaixandoEspera();
+    if (videoEspera.paused) { fimDoSomDaEspera(); return; }
+    const de = videoEspera.volume, passos = 30;
+    let n = 0;
+    abaixandoEspera = setInterval(() => {
+      n++;
+      videoEspera.volume = Math.max(0, de * (1 - n / passos));
+      if (n >= passos) { pararAbaixandoEspera(); fimDoSomDaEspera(); }
+    }, 100);
+  }
+  // Conta para o celular onde o som da espera está (para a barrinha andar).
+  let ultimoSomEspera = 0;
+  videoEspera.addEventListener('timeupdate', () => {
+    if (somEspera.inicio == null) return;
+    const agora = Date.now();
+    if (agora - ultimoSomEspera < 1000) return;
+    ultimoSomEspera = agora;
+    conexao.enviar({ cmd: 'audioProgresso', inicio: somEspera.inicio, t: videoEspera.currentTime, dur: videoEspera.duration || 0, terminou: false });
+  });
 
   // A música da espera sai abaixando devagar (uns 3 segundos), sem cortar de uma vez.
   let abaixando = null;

@@ -522,3 +522,32 @@ a.btn.primary { color: var(--on-accent); }
 .leitura-versao { font-weight: 700; padding-right: 10px; }
 .leitura p { padding: 16px 18px 0; font-size: clamp(28px, 8.3vw, 36px); font-weight: 700; line-height: 1.34; }
 @media (min-width: 860px) { .leitura { padding: 0 0 26px; } .leitura p { padding: 22px 26px 0; font-size: 38px; } }
+
+/* Som do vídeo da tela de espera: o rótulo na barra de som e o aviso na lista da reunião */
+.hud-nome small { display: block; font-size: 12px; font-weight: 600; opacity: .7; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; }
+.aviso-espera { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: #e9edf7; color: #1f2a4d; font-weight: 600; }
+
+/* Aba "Música": o que está tocando em cima, e a lista em ordem embaixo */
+.musica-qt { display: inline-block; vertical-align: middle; margin-left: 6px; padding: 1px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-family: inherit; font-size: 15px; font-weight: 700; }
+.tocando-agora { display: grid; gap: 10px; margin: 10px 0 12px; padding: 12px 14px; border-radius: 16px; background: var(--navy); color: var(--navy-ink); }
+.ta-texto small { display: block; font-size: 13px; font-weight: 700; letter-spacing: .03em; color: var(--live-claro); }
+.ta-texto b { display: block; font-size: 19px; line-height: 1.2; overflow-wrap: anywhere; }
+.ta-botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ta-botoes .btn { min-height: 52px; font-size: 17px; }
+.ta-botoes .btn:not(.danger) { background: var(--surface); border-color: var(--surface); color: var(--navy); }
+.musica-grupo { margin: 14px 0 6px; }
+.passagens .btn.musica-linha { display: flex; align-items: center; gap: 10px; }
+.musica-nome { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.musica-tag { flex: none; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--navy); color: var(--navy-ink); }
+
+/* Aba "Música": a estrela de favorita ao lado de cada música, e o campo para dar outro nome */
+.musica-item { display: grid; grid-template-columns: minmax(0, 1fr) 60px; gap: 6px; }
+.passagens .btn.musica-fav { justify-content: center; padding: 0; color: var(--muted); }
+.musica-fav .i { width: 26px; height: 26px; }
+.passagens .btn.musica-fav.sim { color: #b7791f; border-color: #e3c07a; background: #fdf6e3; }
+.musica-fav.sim .i { fill: currentColor; }
+.musica-renomear { display: grid; gap: 8px; padding: 10px; border-radius: 14px; border: 2px solid var(--navy); background: var(--surface); }
+.musica-renomear .ta-botoes .btn { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.musica-renomear .ta-botoes .btn.primary { background: var(--navy); border-color: var(--navy); color: var(--navy-ink); }
+.musica-dica { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; }
+.musica-dica .i { flex: none; width: 20px; height: 20px; }

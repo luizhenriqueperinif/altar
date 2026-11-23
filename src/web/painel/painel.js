@@ -474,7 +474,7 @@
       <div class="acoes">
         ${S.renomear === b.id
           ? `<button class="btn primary" data-a="salvarNome" data-v="${b.id}">Salvar</button><button class="btn" data-a="cancelarNome">Cancelar</button>`
-          : `${marcavel ? `<button class="btn ${marcada ? 'marcada' : ''}" data-a="bibMarcar" data-v="${b.id}" aria-pressed="${marcada}" title="Marque várias para colocar na reunião de uma vez${b.tipo === 'imagem' ? ' ou juntar numa pregação' : ''}">${marcada ? I('ok') + ' Marcada' : 'Marcar'}</button>` : ''}${b.tipo === 'pregacao' ? `<button class="btn" data-a="editarPregacao" data-v="${b.id}" title="Mudar a ordem, tirar ou colocar imagens">${I('lista')} Imagens</button>` : ''}${b.tipo === 'video' || b.tipo === 'imagem' ? `<button class="btn ${b.espera ? 'na-espera' : ''}" data-a="marcarEspera" data-v="${b.id}" title="Aparece na escolha da Tela de espera das reuniões">${I(b.espera ? 'ok' : 'tv')} ${b.espera ? 'Na espera' : 'Usar na espera'}</button>` : ''}<button class="btn" data-a="renomear" data-v="${b.id}">${I('editar')} Nome</button><button class="btn danger" data-a="apagarArquivo" data-v="${b.id}">${I('lixo')} Apagar</button>`}
+          : `${marcavel ? `<button class="btn ${marcada ? 'marcada' : ''}" data-a="bibMarcar" data-v="${b.id}" aria-pressed="${marcada}" title="Marque várias para colocar na reunião de uma vez${b.tipo === 'imagem' ? ' ou juntar numa pregação' : ''}">${marcada ? I('ok') + ' Marcada' : 'Marcar'}</button>` : ''}${b.tipo === 'pregacao' ? `<button class="btn" data-a="editarPregacao" data-v="${b.id}" title="Mudar a ordem, tirar ou colocar imagens">${I('lista')} Imagens</button>` : ''}${b.tipo === 'video' || b.tipo === 'imagem' ? `<button class="btn ${b.espera ? 'na-espera' : ''}" data-a="marcarEspera" data-v="${b.id}" title="Aparece na escolha da Tela de espera das reuniões">${I(b.espera ? 'ok' : 'tv')} ${b.espera ? 'Na espera' : 'Usar na espera'}</button>` : ''}${b.tipo === 'musica' ? `<button class="btn favorita ${b.favorita ? 'sim' : ''}" data-a="favoritar" data-v="${b.id}" aria-pressed="${!!b.favorita}" title="As favoritas aparecem primeiro, aqui e no celular">${I('estrela')} ${b.favorita ? 'Favorita' : 'Favoritar'}</button>` : ''}<button class="btn" data-a="renomear" data-v="${b.id}">${I('editar')} Nome</button><button class="btn danger" data-a="apagarArquivo" data-v="${b.id}">${I('lixo')} Apagar</button>`}
       </div></div>`;
   }
 
@@ -557,6 +557,8 @@
     let lista = M.biblioteca.filter(b => b.tipo === S.bibAba).slice().reverse();
     const f = S.catFiltro || 'todas';
     if (S.bibAba === 'musica' && f !== 'todas') lista = lista.filter(b => (f === 'sem' ? !b.categoria : b.categoria === f));
+    // Músicas: as favoritas primeiro, como no celular.
+    if (S.bibAba === 'musica') lista = [...lista.filter(b => b.favorita), ...lista.filter(b => !b.favorita)];
     const antigos = M.antigos.length;
     return `<div class="pagina">
       <div class="cabeca"><h1>Biblioteca</h1>
@@ -581,9 +583,29 @@
   const fotosDaEspera = () => window.Versiculo.FUNDOS.filter(f => f.foto && !(M.esperasEscondidas || []).includes(f.id));
   function abaEspera() {
     const marcados = M.biblioteca.filter(b => b.espera).slice().reverse();
-    const cartao = b => `<div class="arq">${miniatura(b)}
+    const sorteado = M.info.esperaModo === 'sorteado';
+    const fixoId = M.info.esperaPadraoId || '';
+    // No modo fixo, cada fundo tem o botão "Usar em todas as reuniões"; o que está valendo mostra o aviso no lugar.
+    const usar = fid => sorteado ? '' : fixoId === fid
+      ? `<span class="tag-espera">${I('ok')} Em todas as reuniões</span>`
+      : `<button class="btn" data-a="esperaPadrao" data-v="${fid}">Usar em todas as reuniões</button>`;
+    const cartao = b => `<div class="arq ${!sorteado && fixoId === b.id ? 'escolhido' : ''}">${miniatura(b)}
       <div class="info"><div class="t">${esc(b.titulo)}</div><div class="d">Adicionado em ${ddmm(b.criadoEm)}</div></div>
-      <div class="acoes"><button class="btn" data-a="marcarEspera" data-v="${b.id}">${I('fechar')} Tirar da espera</button></div></div>`;
+      <div class="acoes">${usar(b.id)}
+        ${b.tipo === 'video' ? `<button class="btn som-espera ${b.esperaSom ? 'ligada' : ''}" data-a="somEspera" data-v="${b.id}" role="switch" aria-checked="${!!b.esperaSom}" title="Tocar o som deste vídeo quando a reunião é aberta">${I('som')} ${b.esperaSom ? 'Com som' : 'Sem som'}</button>` : ''}
+        <button class="btn" data-a="marcarEspera" data-v="${b.id}">${I('fechar')} Tirar da espera</button></div></div>`;
+    const modo = `<div class="caixa espera-modo">
+        <h2>Em todas as reuniões</h2>
+        <div class="sub-abas" role="group" aria-label="Fundo de todas as reuniões">
+          <button class="btn ${sorteado ? '' : 'sel'}" data-a="esperaModo" data-v="fixo" aria-pressed="${!sorteado}">Fixo: sempre o mesmo</button>
+          <button class="btn ${sorteado ? 'sel' : ''}" data-a="esperaModo" data-v="sorteado" aria-pressed="${sorteado}">Sorteado: um a cada reunião</button></div>
+        <p class="note">${sorteado
+          ? (marcados.length > 1
+            ? `Cada vez que uma reunião é aberta, o Altar escolhe um dos ${marcados.length} fundos seus aqui embaixo, sem repetir o da reunião anterior. As fotos que vêm no programa não entram no sorteio.`
+            : 'Para sortear, coloque aqui embaixo pelo menos dois vídeos ou imagens seus. As fotos que vêm no programa não entram no sorteio.')
+          : `<b>Valendo agora:</b> ${esc(resumoEspera())} Para trocar, clique em "Usar em todas as reuniões" no fundo que quiser.`}</p>
+        ${!sorteado && fixoId ? '<div class="acoes"><button class="btn sm" data-a="esperaPadrao" data-v="">Voltar para a do programa ("Seja bem-vindo")</button></div>' : ''}
+      </div>`;
     const grupo = (tipo, titulo, vazio) => {
       const l = marcados.filter(b => (tipo === 'video' ? b.tipo === 'video' : b.tipo !== 'video'));
       return `<h2 class="sub-titulo">${titulo} <span class="qt-dia">${l.length}</span></h2>
@@ -592,10 +614,12 @@
     const fotos = fotosDaEspera(), escondidas = (M.esperasEscondidas || []).length;
     const fotosHtml = fotos.map(f => `<div class="fundo-op fixo">${amostraEspera({ foto: f.foto })}
         <span class="nome-linha"><span class="nome">${esc(f.nome)}</span>
-          <button class="btn sm danger" data-a="esconderEspera" data-v="${f.id}" title="Tirar esta foto da Tela de espera">${I('lixo')} Tirar</button></span></div>`).join('');
+          <button class="btn sm danger" data-a="esconderEspera" data-v="${f.id}" title="Tirar esta foto da Tela de espera">${I('lixo')} Tirar</button></span>
+        ${sorteado ? '' : `<span class="nome-linha">${usar(f.id)}</span>`}</div>`).join('');
     const voltar = escondidas ? `<p class="note">Vocês tiraram ${escondidas} ${escondidas === 1 ? 'foto' : 'fotos'} do programa. <button class="btn sm" data-a="mostrarEsperas">${I('voltar')} Trazer de volta</button></p>` : '';
-    return `<p class="note">Estes vídeos e imagens aparecem na hora de escolher a Tela de espera de uma reunião (botão "Tela de espera" dentro da reunião).
-        Os vídeos passam sem som e repetindo. Use "+ Adicionar vídeo ou imagem", arraste os arquivos para cá ou clique em "Usar na espera" nas abas Vídeos e Imagens.</p>
+    return `${modo}
+      <p class="note">Estes são os fundos de antes da reunião. Os vídeos passam repetindo; com "Com som", o som do vídeo toca quando a reunião é aberta e sai quando o primeiro item vai para a TV.
+        Uma reunião ainda pode ter um fundo só dela, no botão "Tela de espera" dentro da reunião. Para colocar mais, use "+ Adicionar vídeo ou imagem" ou arraste os arquivos para cá.</p>
       ${grupo('video', 'Vídeos', 'Nenhum vídeo para a espera ainda.')}
       ${grupo('imagem', 'Suas imagens', 'Nenhuma imagem sua para a espera ainda.')}
       <h2 class="sub-titulo">Fotos que vêm no programa <span class="qt-dia">${fotos.length}</span></h2>
@@ -801,7 +825,21 @@
     return `<span class="amostra espera-amostra" style='background:${esperaCss(esp)}'>${esp ? (esp.video ? I('video') : '') : '<b>Seja bem-vindo</b>'}</span>`;
   }
   const EXT_VID = /.(mp4|m4v|mov|webm|mkv)$/i;
-  const esperaPadrao = () => M.info.telaEspera ? { arquivo: M.info.telaEspera, video: EXT_VID.test(M.info.telaEspera) } : null;
+  // O fundo de todas as reuniões (fixo ou o sorteado da vez), como o notebook manda; null = a do programa.
+  const esperaPadrao = () => M.info.esperaPadrao || null;
+  // Em poucas palavras, o que está valendo para todas as reuniões.
+  function resumoEspera() {
+    const n = M.biblioteca.filter(b => b.espera).length;
+    if (M.info.esperaModo === 'sorteado' && n) return n > 1 ? `Sorteado: um dos ${n} fundos a cada reunião.` : 'Sorteado, mas só há 1 fundo na lista: é sempre ele.';
+    const b = M.biblioteca.find(x => x.id === M.info.esperaPadraoId);
+    if (b) return `Fixo: ${b.titulo}${b.tipo === 'video' ? (b.esperaSom ? ' (com som)' : ' (sem som)') : ''}.`;
+    const f = M.info.esperaPadraoId && window.Versiculo.FUNDOS.find(x => x.id === M.info.esperaPadraoId);
+    if (f) return `Fixo: a foto "${f.nome}".`;
+    return 'A do programa: foto com a logo da igreja e "Seja bem-vindo".';
+  }
+  // Chave "Tocar o som deste vídeo": fica guardada no vídeo da Biblioteca.
+  const chaveSom = (chave, ligada) => `<button type="button" class="chave-som ${ligada ? 'ligada' : ''}" data-a="somEspera" data-v="${chave}" role="switch" aria-checked="${!!ligada}">
+      <span class="chave-bola"></span><span><b>Tocar o som deste vídeo</b><span class="note">Começa quando a reunião é aberta e sai sozinho quando o primeiro item vai para a TV. Com o som do vídeo ligado, a música da espera não toca.</span></span></button>`;
   function janelaEspera() {
     const r = reuniaoAberta();
     if (!r) { S.espera = false; return ''; }
@@ -813,6 +851,7 @@
     const proprias = M.biblioteca.filter(b => (b.tipo === 'imagem' || b.tipo === 'fundo') && vale(b)).slice().reverse().map(b => ({ id: b.id, nome: b.titulo, esp: { arquivo: b.arquivo } }));
     const videos = M.biblioteca.filter(b => b.tipo === 'video' && vale(b)).slice().reverse().map(b => ({ id: b.id, nome: b.titulo, esp: { arquivo: b.arquivo, video: true, capa: b.capa } }));
     const sel = r.telaEsperaId || '';
+    const videoSel = M.biblioteca.find(b => b.id === sel && b.tipo === 'video');
     const tile = (id, nome, esp) => `<button class="fundo-op ${sel === id ? 'sel' : ''}" data-a="escolherEspera" data-v="${id}">
         ${amostraEspera(esp)}<span class="nome">${sel === id ? I('ok') + ' ' : ''}${esc(nome)}</span></button>`;
     // Mostra 4 de cada; a setinha abre o resto (abre sozinho se o escolhido estiver escondido).
@@ -828,12 +867,14 @@
     return `<div class="fundo-modal"><div class="janela" role="dialog" aria-label="Tela de espera desta reunião">
       <header><h2>Tela de espera desta reunião</h2><button class="btn sm" data-a="fecharModal">${I('fechar')} Fechar</button></header>
       <div class="corpo"><p class="note">É o que aparece na TV antes de começar e quando nada está passando. Se não escolher, fica a padrão.</p>
-        <div class="fundos">${tile('', 'Padrão', padrao)}</div>
-        ${grupo('video', 'Vídeos', videos, 'O vídeo passa sem som, repetindo, enquanto a TV está na espera. O som fica com a música da espera.',
+        <div class="fundos">${tile('', M.info.esperaModo === 'sorteado' ? 'Padrão (sorteado a cada reunião)' : 'Padrão', padrao)}</div>
+        ${sel === '' && padrao && padrao.video && padrao.chave ? chaveSom(padrao.chave, padrao.som) : ''}
+        ${grupo('video', 'Vídeos', videos, 'O vídeo passa repetindo enquanto a TV está na espera. Sem som, a não ser que você ligue “Tocar o som deste vídeo” no vídeo escolhido.',
           'Nenhum vídeo marcado para a espera. Na Biblioteca, aba Vídeos, clique em "Usar na espera" nos vídeos que quiser.')}
+        ${videoSel ? chaveSom(videoSel.id, videoSel.esperaSom) : ''}
         ${grupo('imagem', 'Imagens', [...proprias, ...fotos], '', '')}
       </div>
-      <footer><span class="note">A padrão muda em Configurações → Tela de espera.</span><button class="btn primary" data-a="fecharModal">Pronto</button></footer>
+      <footer><span class="note">A padrão muda na Biblioteca, aba Tela de espera.</span><button class="btn primary" data-a="fecharModal">Pronto</button></footer>
     </div></div>`;
   }
 
@@ -897,12 +938,11 @@
         ${pastores || (f ? '' : '<p class="note">Nenhum pastor cadastrado.</p>')}
       </section>
       <section class="caixa">
-        <h2>Tela de espera padrão</h2>
-        <p class="note">O que aparece na TV antes e depois da reunião. Cada reunião pode escolher outra, no botão "Tela de espera" dentro da reunião.
-          A do programa é uma foto com a logo da igreja e "Seja bem-vindo".</p>
+        <h2>Tela de espera (fundo antes da reunião)</h2>
+        <p class="note">O que aparece na TV antes e depois da reunião. Escolhe-se na Biblioteca, aba "Tela de espera": um fundo fixo, ou um sorteado a cada reunião.</p>
         ${espera}
-        <div class="acoes"><button class="btn" data-a="trocarEspera">Usar uma imagem ou vídeo meu</button>
-          ${M.info.telaEspera ? '<button class="btn" data-a="esperaDoPrograma">Voltar para a do programa</button>' : ''}</div>
+        <p class="note"><b>Valendo agora:</b> ${esc(resumoEspera())}</p>
+        <div class="acoes"><button class="btn primary" data-a="irParaEspera">${I('biblioteca')} Escolher na Biblioteca</button></div>
       </section>
       <section class="caixa">
         <h2>Música da espera padrão</h2>
@@ -1243,6 +1283,16 @@
         enviar({ cmd: 'editarReuniao', id: S.aberta, campos: { musicaEspera: v || null } });
       }
     },
+    // Já mostram a escolha na tela enquanto o notebook grava.
+    esperaModo: v => { M.info.esperaModo = v === 'sorteado' ? 'sorteado' : 'fixo'; enviar({ cmd: 'esperaModo', modo: M.info.esperaModo }); },
+    esperaPadrao: v => { M.info.esperaPadraoId = v || null; M.info.esperaModo = 'fixo'; enviar({ cmd: 'esperaPadrao', id: v || null }); },
+    irParaEspera: () => { S.aba = 'biblioteca'; S.bibAba = 'espera'; S.form = null; S.renomear = null; S.catForm = null; window.scrollTo({ top: 0 }); },
+    somEspera: v => {
+      const b = M.biblioteca.find(x => x.id === v);
+      if (!b) return;
+      b.esperaSom = !b.esperaSom;
+      enviar({ cmd: 'somNaEspera', id: v, sim: b.esperaSom });
+    },
     escolherEspera: v => {
       const r = reuniaoAberta();
       r.telaEsperaId = v || null;  // já mostra marcado enquanto o notebook grava
@@ -1310,6 +1360,12 @@
       if (c && !confirm(`Apagar a categoria "${c.nome}"? As músicas continuam na Biblioteca, só ficam sem categoria.`)) return;
       enviar({ cmd: 'removerCategoria', id: v });
       S.catFiltro = 'todas';
+    },
+    favoritar: v => {
+      const b = M.biblioteca.find(x => x.id === v);
+      if (!b) return;
+      b.favorita = !b.favorita;      // já mostra a estrela enquanto o notebook grava
+      enviar({ cmd: 'favoritarMusica', id: v, sim: b.favorita });
     },
     renomear: v => { S.renomear = v; setTimeout(() => { const i = $('renomear-' + v); if (i) { i.focus(); i.select(); } }); },
     salvarNome: v => salvarNome(v),

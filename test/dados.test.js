@@ -476,7 +476,7 @@ test('tela de espera com vídeo: da Biblioteca ou o arquivo padrão', () => {
   d.d.biblioteca.push({ id: 'v1', tipo: 'video', titulo: 'Fundo animado', arquivo: 'v1.mp4', capa: 'capa-v1.jpg' });
   const r = d.criarReuniao({ data: '2026-11-03', hora: '18:00' });
   d.editarReuniao(r.id, { telaEspera: 'v1' });
-  assert.deepEqual(d.telaEspera(r.id), { arquivo: 'v1.mp4', video: true, capa: 'capa-v1.jpg', daReuniao: true });
+  assert.deepEqual(d.telaEspera(r.id), { arquivo: 'v1.mp4', video: true, capa: 'capa-v1.jpg', daReuniao: true, som: false, chave: 'v1' });
   const origem = path.join(pasta, 'espera.mp4'); fs.writeFileSync(origem, 'x');
   d.trocarTelaEspera(origem);
   d.editarReuniao(r.id, { telaEspera: null });
@@ -511,4 +511,168 @@ test('tirar uma foto do programa da tela de espera: some da lista, a reunião vo
   assert.deepEqual(d.esperasEscondidas, [foto]);
   d.mostrarEsperasDoPrograma();
   assert.deepEqual(d.esperasEscondidas, []);
+});
+
+test('vídeo da espera com som: a chave fica no vídeo da Biblioteca ou na tela de espera padrão', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados } = require('../src/main/dados');
+  const d = new Dados(fs.mkdtempSync(path.join(os.tmpdir(), 'altar-es-')));
+  d.d.biblioteca.push({ id: 'v1', tipo: 'video', titulo: 'Fundo antes da reunião', arquivo: 'v1.mp4' }, { id: 'i1', tipo: 'imagem', titulo: 'x', arquivo: 'i1.png' });
+  const r = d.criarReuniao({ data: '2026-11-03', hora: '18:00' });
+  assert.equal(d.somDaEspera(r.id), null);
+  d.editarReuniao(r.id, { telaEspera: 'v1' });
+  assert.equal(d.somDaEspera(r.id), null);            // vídeo na espera sem a chave: continua sem som
+  assert.equal(d.somNaEspera('i1', true), false);     // imagem não tem som
+  assert.equal(d.somNaEspera('v1', true), true);
+  assert.equal(d.somDaEspera(r.id), 'v1');
+  assert.equal(d.telaEspera(r.id).som, true);
+  d.somNaEspera('v1', false);
+  assert.equal(d.somDaEspera(r.id), null);
+  // como fundo de todas as reuniões (fixo), o som do vídeo também vale
+  d.editarReuniao(r.id, { telaEspera: null });
+  assert.equal(d.somDaEspera(r.id), null);
+  d.definirEsperaPadrao('v1');
+  d.somNaEspera('v1', true);
+  assert.equal(d.somDaEspera(r.id), 'v1');
+  d.definirEsperaPadrao('i1');                        // imagem como fundo fixo: sem som
+  assert.equal(d.somDaEspera(r.id), null);
+});
+
+test('fundo de espera fixo: um da Biblioteca ou foto do programa vale para todas as reuniões; a reunião pode ter o dela', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados, FUNDOS_PRONTOS } = require('../src/main/dados');
+  const d = new Dados(fs.mkdtempSync(path.join(os.tmpdir(), 'altar-ef-')));
+  d.d.biblioteca.push({ id: 'v1', tipo: 'video', titulo: 'Fundo 1', arquivo: 'v1.mp4' }, { id: 'i1', tipo: 'imagem', titulo: 'Foto', arquivo: 'i1.png' }, { id: 'm1', tipo: 'musica', titulo: 'Hino', arquivo: 'm1.mp3' });
+  const r = d.criarReuniao({ data: '2026-11-03', hora: '18:00' });
+  assert.equal(d.esperaModo, 'fixo');
+  assert.equal(d.telaEspera(r.id), null);                       // nada escolhido: a do programa
+  assert.equal(d.definirEsperaPadrao('m1'), false);            // música não é fundo
+  assert.equal(d.definirEsperaPadrao('nao-existe'), false);
+  assert.equal(d.definirEsperaPadrao('v1'), true);
+  assert.equal(d.arquivoDaBiblioteca('v1').espera, true);      // entra na aba "Tela de espera"
+  assert.equal(d.telaEspera(r.id).arquivo, 'v1.mp4');
+  assert.equal(d.telaEspera(null).arquivo, 'v1.mp4');          // sem reunião aberta também
+  assert.equal(d.telaEspera(r.id).daReuniao, undefined);
+  // a reunião com um fundo só dela ganha do fixo
+  d.editarReuniao(r.id, { telaEspera: 'i1' });
+  assert.deepEqual(d.telaEspera(r.id), { arquivo: 'i1.png', daReuniao: true });
+  d.editarReuniao(r.id, { telaEspera: null });
+  // foto do programa como fundo fixo; tirar a foto da lista volta para a do programa
+  const foto = FUNDOS_PRONTOS[8];
+  assert.equal(d.definirEsperaPadrao(foto), true);
+  assert.deepEqual(d.telaEspera(r.id), { foto: '/comum/fundos/' + foto + '.jpg' });
+  d.esconderEsperaDoPrograma(foto);
+  assert.equal(d.telaEspera(r.id), null);
+  // "tirar da espera" o fundo fixo, ou apagar o arquivo: volta para a do programa
+  d.definirEsperaPadrao('v1');
+  d.marcarParaEspera('v1', false);
+  assert.equal(d.telaEspera(r.id), null);
+  d.definirEsperaPadrao('v1');
+  d.removerDaBiblioteca('v1');
+  assert.equal(d.telaEspera(r.id), null);
+});
+
+test('fundo de espera sorteado: um dos fundos da aba a cada reunião aberta, sem repetir o anterior', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados } = require('../src/main/dados');
+  const d = new Dados(fs.mkdtempSync(path.join(os.tmpdir(), 'altar-es2-')));
+  d.d.biblioteca.push({ id: 'v1', tipo: 'video', titulo: 'Fundo 1', arquivo: 'v1.mp4', espera: true, esperaSom: true },
+    { id: 'v2', tipo: 'video', titulo: 'Fundo 2', arquivo: 'v2.mp4', espera: true },
+    { id: 'v3', tipo: 'video', titulo: 'Fundo 3', arquivo: 'v3.mp4', espera: true },
+    { id: 'v9', tipo: 'video', titulo: 'Vídeo da semana', arquivo: 'v9.mp4' },                       // não está na aba: não entra
+    { id: 'i1', tipo: 'imagem', titulo: 'Foto', arquivo: 'i1.png' });
+  const r1 = d.criarReuniao({ data: '2026-11-03', hora: '18:00' }), r2 = d.criarReuniao({ data: '2026-11-04', hora: '18:00' });
+  assert.equal(d.sortearEspera(r1.id), null);                   // no modo fixo não sorteia
+  d.definirEsperaModo('sorteado');
+  assert.equal(d.esperaModo, 'sorteado');
+  // sempre um dos três da aba, e nunca o mesmo duas vezes seguidas
+  let anterior = null;
+  for (let n = 0; n < 40; n++) {
+    const s = d.sortearEspera(n % 2 ? r1.id : r2.id);
+    assert.ok(['v1', 'v2', 'v3'].includes(s));
+    assert.notEqual(s, anterior);
+    assert.equal(d.telaEspera(r1.id).chave, s);                 // o sorteado vale até a próxima reunião aberta
+    anterior = s;
+  }
+  // o acaso é trocável: o primeiro e o último da lista que sobra
+  d.d.config.esperaSorteada = 'v3';
+  assert.equal(d.sortearEspera(r1.id, () => 0), 'v1');
+  assert.equal(d.somDaEspera(r1.id), 'v1');                     // o sorteado tem som: toca
+  assert.equal(d.sortearEspera(r1.id, () => 0.999), 'v3');
+  assert.equal(d.somDaEspera(r1.id), null);
+  // a reunião com um fundo só dela não entra no sorteio
+  d.editarReuniao(r2.id, { telaEspera: 'i1' });
+  assert.equal(d.sortearEspera(r2.id), null);
+  assert.equal(d.telaEspera(r2.id).arquivo, 'i1.png');
+  // apagaram o sorteado: vale outro da lista; com um só na lista, é sempre ele
+  d.removerDaBiblioteca('v3');
+  assert.ok(['v1', 'v2'].includes(d.telaEspera(r1.id).chave));
+  d.marcarParaEspera('v2', false);
+  assert.equal(d.sortearEspera(r1.id), 'v1');
+  assert.equal(d.sortearEspera(r1.id), 'v1');
+  // sem nenhum fundo na aba, vale o fixo (ou a do programa)
+  d.marcarParaEspera('v1', false);
+  assert.equal(d.sortearEspera(r1.id), null);
+  assert.equal(d.telaEspera(r1.id), null);
+  // escolher um fundo fixo desliga o sorteio
+  d.definirEsperaPadrao('v2');
+  assert.equal(d.esperaModo, 'fixo');
+  assert.equal(d.telaEspera(r1.id).chave, 'v2');
+});
+
+test('a tela de espera antiga de Configurações vira um fundo da Biblioteca e continua valendo como fixo', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados } = require('../src/main/dados');
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'altar-em-'));
+  const d0 = new Dados(pasta);
+  const r = d0.criarReuniao({ data: '2026-11-03', hora: '18:00' });
+  fs.writeFileSync(path.join(d0.pastaMidia, 'antiga.mp4'), 'video de espera');
+  d0.d.config.telaEspera = 'antiga.mp4';
+  d0.d.config.telaEsperaSom = true;
+  d0.salvar();
+  const d = new Dados(pasta);                                    // o programa abre de novo, já na versão nova
+  const b = d.d.biblioteca.find(x => x.arquivo === 'antiga.mp4');
+  assert.ok(b);
+  assert.equal(b.tipo, 'video');
+  assert.equal(b.espera, true);
+  assert.equal(b.esperaSom, true);
+  assert.equal(d.d.config.telaEspera, null);
+  assert.equal(d.d.config.telaEsperaSom, undefined);
+  assert.equal(d.d.config.esperaPadraoId, b.id);
+  assert.equal(d.esperaModo, 'fixo');
+  assert.equal(d.somDaEspera(r.id), b.id);                      // continua tocando com som
+  assert.ok(fs.existsSync(path.join(pasta, 'dados-antes-espera-na-biblioteca.json')));
+  assert.equal(new Dados(pasta).d.biblioteca.length, 1);        // abrir de novo não duplica
+  // imagem antiga também vira fundo fixo
+  const pasta2 = fs.mkdtempSync(path.join(os.tmpdir(), 'altar-em2-'));
+  const e0 = new Dados(pasta2);
+  fs.writeFileSync(path.join(e0.pastaMidia, 'antiga.png'), 'imagem');
+  e0.d.config.telaEspera = 'antiga.png';
+  e0.salvar();
+  const e = new Dados(pasta2);
+  assert.equal(e.telaEspera(null).arquivo, 'antiga.png');
+  assert.equal(e.telaEspera(null).video, undefined);
+});
+
+test('"apagar antigos" não apaga fundo de espera', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados } = require('../src/main/dados');
+  const d = new Dados(fs.mkdtempSync(path.join(os.tmpdir(), 'altar-ea-')), { hoje: () => '2026-11-23' });
+  d.d.biblioteca.push({ id: 'v1', tipo: 'video', titulo: 'Fundo de espera', arquivo: 'v1.mp4', criadoEm: '2026-01-01', espera: true },
+    { id: 'v2', tipo: 'video', titulo: 'Vídeo velho', arquivo: 'v2.mp4', criadoEm: '2026-01-01' });
+  assert.deepEqual(d.antigos().map(b => b.id), ['v2']);
+});
+
+test('música favorita: marca e desmarca; só música pode ser favorita', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados } = require('../src/main/dados');
+  const d = new Dados(fs.mkdtempSync(path.join(os.tmpdir(), 'altar-mf-')));
+  d.d.biblioteca.push({ id: 'm1', tipo: 'musica', titulo: 'Hino', arquivo: 'm1.mp3' }, { id: 'v1', tipo: 'video', titulo: 'Vídeo', arquivo: 'v1.mp4' });
+  assert.equal(d.favoritarMusica('m1', true), true);
+  assert.equal(d.arquivoDaBiblioteca('m1').favorita, true);
+  assert.equal(new Dados(d.pasta).arquivoDaBiblioteca('m1').favorita, true);   // fica gravado
+  assert.equal(d.favoritarMusica('m1', false), true);
+  assert.equal(d.arquivoDaBiblioteca('m1').favorita, undefined);
+  assert.equal(d.favoritarMusica('v1', true), false);
+  assert.equal(d.favoritarMusica('nao-existe', true), false);
 });

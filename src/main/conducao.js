@@ -18,6 +18,7 @@ const refValida = r => r && Number.isInteger(r.l) && Number.isInteger(r.c) && Nu
  *   musica(bibliotecaId): object|undefined,   música da Biblioteca (para tocar avulsa)
  *   reuniaoExiste(id): boolean,
  *   musicaEspera(reuniaoId): string|null,  música que toca na tela de espera ao abrir a reunião
+ *   somDaEspera(reuniaoId): string|null,   o vídeo da espera que toca com o próprio som (a "chave" dele), se tiver
  *   versao(e): string,                       versão da Bíblia do que está na TV
  *   versoes: string[],                       as versões que existem (para o 'trocarVersao')
  *   existe(versao, ref): boolean,
@@ -38,6 +39,9 @@ function aplicarComando(e, cmd, ctx) {
       if (!ctx.reuniaoExiste(cmd.id)) return e;
       const base = { ...estadoInicial(e.volume), reuniaoId: cmd.id };
       // Abriu a reunião: a TV fica na espera e, se tiver música da espera, ela começa (em repetição).
+      // Se o vídeo da espera toca com o próprio som, é ele que começa (e a música da espera fica de fora).
+      const somVideo = ctx.somDaEspera ? ctx.somDaEspera(cmd.id) : null;
+      if (somVideo) return { ...base, audio: somDoVideoDaEspera(e, somVideo) };
       const bid = ctx.musicaEspera ? ctx.musicaEspera(cmd.id) : null;
       return bid && ctx.musica(bid) ? { ...base, audio: { ...novoAudio(e, bid, null), espera: true } } : base;
     }
@@ -192,6 +196,20 @@ function aplicarComando(e, cmd, ctx) {
       return { ...e, audio: novoAudio(e, m.id, null), video: e.video ? { ...e.video, tocando: false } : null };
     }
 
+    case 'acertarSomDaEspera': {
+      // Mexeram na tela de espera, ou na chave "Tocar o som deste vídeo", com a reunião aberta.
+      const chave = e.reuniaoId && ctx.somDaEspera ? ctx.somDaEspera(e.reuniaoId) : null;
+      const naEspera = e.tv.tipo === 'espera';
+      if (e.audio && e.audio.video) {
+        // O vídeo que estava tocando com som foi trocado ou perdeu o som: o som sai (ou passa para o novo).
+        if (chave === e.audio.bibliotecaId) return e;
+        return chave && naEspera ? { ...e, audio: somDoVideoDaEspera(e, chave) } : { ...e, audio: null };
+      }
+      // Ligaram o som agora, com a TV na espera: ele começa (no lugar da música da espera, se ela estiver tocando).
+      if (cmd.ligar && chave && naEspera && (!e.audio || e.audio.espera)) return { ...e, audio: somDoVideoDaEspera(e, chave) };
+      return e;
+    }
+
     case 'audioPausar': {
       if (!e.audio || !e.audio.tocando) return e;
       return { ...e, audio: { ...e.audio, tocando: false } };
@@ -277,6 +295,11 @@ function aplicarComando(e, cmd, ctx) {
     default:
       return e;
   }
+}
+
+/** O som do vídeo da tela de espera: vale como a música da espera (sai quando algo vai para a TV), mas quem toca é o vídeo. */
+function somDoVideoDaEspera(e, chave) {
+  return { ...novoAudio(e, chave, null), espera: true, video: true };
 }
 
 function novoAudio(e, bibliotecaId, itemId) {

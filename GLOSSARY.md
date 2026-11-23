@@ -57,7 +57,7 @@ Uma imagem que divulga outro evento da igreja, mostrada como Item da Reunião.
 _Avoid_: Reunião, evento, banner
 
 **Tela de espera**:
-A imagem da igreja que o Telão mostra antes de a Reunião começar e depois que ela termina. O Pastor pode trocá-la.
+A imagem (ou vídeo) da igreja que o Telão mostra antes de a Reunião começar e depois que ela termina. O Pastor pode trocá-la. Um vídeo passa repetindo e sem som, a não ser que o Pastor ligue "Tocar o som deste vídeo": aí o som dele toca quando a Reunião é aberta e sai quando o primeiro item vai para o Telão (o **fundo de espera**). Os fundos de espera ficam na Biblioteca, aba "Tela de espera", e valem para todas as Reuniões de dois jeitos: **fixo** (sempre o mesmo) ou **sorteado** (um a cada Reunião aberta).
 _Avoid_: Tela inicial, descanso de tela, logo
 
 **Biblioteca**:

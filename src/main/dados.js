@@ -137,7 +137,31 @@ class Dados {
     if (juntarVersiculosNaPalavra(d)) { this.d = d; this.salvar(); }
     this.d = d;
     this._fundosQueViraramProntos();
+    this._esperaPadraoParaBiblioteca();
     return d;
+  }
+
+  /**
+   * A tela de espera padrão era um arquivo solto, escolhido em Configurações. Agora ela é um fundo da Biblioteca
+   * (aba "Tela de espera"): o arquivo antigo vira um item de lá e continua valendo como o fundo fixo.
+   */
+  _esperaPadraoParaBiblioteca() {
+    const cfg = this.d.config, nome = cfg.telaEspera;
+    if (!nome) return;
+    const ext = path.extname(nome).slice(1).toLowerCase();
+    const tipo = EXT_VIDEO.includes(ext) ? 'video' : EXT_IMAGEM.includes(ext) ? 'imagem' : null;
+    const caminho = path.join(this.pastaMidia, nome);
+    if (tipo && fs.existsSync(caminho)) {
+      try { fs.copyFileSync(this.arquivo, path.join(this.pasta, 'dados-antes-espera-na-biblioteca.json')); } catch { /* sem cópia de segurança, segue */ }
+      const b = { id: id(), tipo, titulo: 'Fundo de espera', arquivo: nome, criadoEm: this.hoje(), espera: true };
+      try { b.marca = marcaDoArquivo(caminho); } catch { /* sem marca: só não reconhece o mesmo arquivo de novo */ }
+      if (tipo === 'video' && cfg.telaEsperaSom) b.esperaSom = true;
+      this.d.biblioteca.push(b);
+      cfg.esperaPadraoId = b.id;
+    }
+    cfg.telaEspera = null;
+    delete cfg.telaEsperaSom;
+    this.salvar();
   }
 
   /** Tira da Biblioteca as fotos de fundo que agora já vêm no programa; as reuniões passam a usar a do programa. */
@@ -446,6 +470,8 @@ class Dados {
     const b = this.arquivoDaBiblioteca(bid);
     if (!b || !['video', 'imagem', 'fundo'].includes(b.tipo)) return;
     if (sim) b.espera = true; else delete b.espera;
+    // Saiu da espera o fundo que valia para todas as reuniões: volta a do programa.
+    if (!sim && this.d.config.esperaPadraoId === bid) this.d.config.esperaPadraoId = null;
     this.salvar();
   }
 
@@ -455,6 +481,15 @@ class Dados {
     if (!b || !titulo) return;
     b.titulo = titulo;
     this.salvar();
+  }
+
+  /** Marca (ou desmarca) uma música como favorita: no celular, as favoritas aparecem primeiro. */
+  favoritarMusica(bid, sim) {
+    const b = this.arquivoDaBiblioteca(bid);
+    if (!b || b.tipo !== 'musica') return false;
+    if (sim) b.favorita = true; else delete b.favorita;
+    this.salvar();
+    return true;
   }
 
   /** Quantas reuniões usam este arquivo. */
@@ -474,6 +509,8 @@ class Dados {
       if (r.musicaEspera === bid) r.musicaEspera = null;
     }
     if (this.d.config.musicaEspera === bid) this.d.config.musicaEspera = null;
+    if (this.d.config.esperaPadraoId === bid) this.d.config.esperaPadraoId = null;
+    if (this.d.config.esperaSorteada === bid) delete this.d.config.esperaSorteada;
     for (const a of [...(b.arquivos || [b.arquivo]), b.capa].filter(Boolean)) fs.rmSync(path.join(this.pastaMidia, a), { force: true });
     this.salvar();
   }
@@ -507,6 +544,7 @@ class Dados {
     const limite = somarDias(hoje, -DIAS_PARA_ANTIGO);
     return this.d.biblioteca.filter(b => {
       if (!TIPOS_DA_SEMANA.includes(b.tipo)) return false;
+      if (b.espera || b.id === this.d.config.esperaPadraoId) return false;   // fundo de espera não é "da semana": fica
       const datas = this.d.reunioes.filter(r => r.itens.some(i => i.bibliotecaId === b.id)).map(r => r.data);
       if (datas.some(d => d >= hoje)) return false;
       const ultimoUso = [b.criadoEm, ...datas].sort().pop();
@@ -743,6 +781,7 @@ class Dados {
     if (!FOTOS_PRONTAS.has(fid) || this.esperasEscondidas.includes(fid)) return false;
     this.d.config.esperasEscondidas = [...this.esperasEscondidas, fid];
     for (const r of this.d.reunioes) if (r.telaEspera === fid) r.telaEspera = null;
+    if (this.d.config.esperaPadraoId === fid) this.d.config.esperaPadraoId = null;
     this.salvar();
     return true;
   }
@@ -769,24 +808,101 @@ class Dados {
 
   // ---------- Tela de espera ----------
 
+  /** Como um fundo de espera aparece na TV: vídeo ou imagem da Biblioteca, ou foto do programa. null = não serve. */
+  _espera(escolhido) {
+    if (!escolhido) return null;
+    const b = this.arquivoDaBiblioteca(escolhido);
+    if (b && (b.tipo === 'imagem' || b.tipo === 'fundo')) return { arquivo: b.arquivo };
+    // Vídeo: passa em repetição. Sem som (o som da chegada é a música da espera), a não ser que
+    // tenham ligado "Tocar o som deste vídeo": aí é o som dele que toca ao abrir a reunião.
+    if (b && b.tipo === 'video') return { arquivo: b.arquivo, video: true, capa: b.capa || null, som: !!b.esperaSom, chave: b.id };
+    if (FUNDOS_PRONTOS.includes(escolhido) && FOTOS_PRONTAS.has(escolhido)) return { foto: '/comum/fundos/' + escolhido + '.jpg' };
+    return null;
+  }
+
+  /** 'fixo' = sempre o mesmo fundo em todas as reuniões; 'sorteado' = um diferente a cada reunião aberta. */
+  get esperaModo() { return this.d.config.esperaModo === 'sorteado' ? 'sorteado' : 'fixo'; }
+
+  definirEsperaModo(modo) {
+    this.d.config.esperaModo = modo === 'sorteado' ? 'sorteado' : 'fixo';
+    this.salvar();
+  }
+
+  /** Os fundos que entram no sorteio: os vídeos e imagens que o pastor colocou na aba "Tela de espera". */
+  fundosDoSorteio() {
+    return this.d.biblioteca.filter(b => b.espera && ['video', 'imagem', 'fundo'].includes(b.tipo));
+  }
+
+  /** O fundo que vale para todas as reuniões agora (id da Biblioteca ou de foto do programa); null = a do programa. */
+  esperaQueVale() {
+    if (this.esperaModo === 'sorteado') {
+      const l = this.fundosDoSorteio();
+      if (l.length) return (l.find(b => b.id === this.d.config.esperaSorteada) || l[0]).id;
+    }
+    return this.d.config.esperaPadraoId || null;
+  }
+
+  /** A tela de espera de todas as reuniões, pronta para a TV; null = a do programa (foto + "Seja bem-vindo"). */
+  esperaPadrao() {
+    return this._espera(this.esperaQueVale());
+  }
+
   /**
-   * O que a TV mostra quando nada está passando:
-   * a escolhida na reunião (imagem da Biblioteca ou foto do programa) ou, se não tiver, a padrão
-   * (a imagem de Configurações ou, sem ela, a do programa: null).
+   * O fundo fixo de todas as reuniões: um vídeo ou imagem da Biblioteca, uma foto do programa,
+   * ou nada (a do programa). Escolher um fundo fixo desliga o sorteio.
+   */
+  definirEsperaPadrao(escolhido) {
+    if (escolhido) {
+      const b = this.arquivoDaBiblioteca(escolhido);
+      if (b) { if (!['video', 'imagem', 'fundo'].includes(b.tipo)) return false; b.espera = true; }
+      else if (!FOTOS_PRONTAS.has(escolhido)) return false;
+    }
+    this.d.config.esperaPadraoId = escolhido || null;
+    this.d.config.esperaModo = 'fixo';
+    this.salvar();
+    return true;
+  }
+
+  /**
+   * Modo "sorteado": escolhe o fundo da reunião que está sendo aberta, sem repetir o da reunião anterior.
+   * Devolve o id sorteado, ou null quando não sorteia (modo fixo, reunião com fundo só dela, lista vazia).
+   */
+  sortearEspera(rid, acaso = Math.random) {
+    if (this.esperaModo !== 'sorteado') return null;
+    const r = rid && this.reuniao(rid);
+    if (!r || this._espera(r.telaEspera)) return null;
+    let l = this.fundosDoSorteio();
+    if (!l.length) return null;
+    if (l.length > 1) l = l.filter(b => b.id !== this.d.config.esperaSorteada);
+    const b = l[Math.min(l.length - 1, Math.floor(acaso() * l.length))];
+    this.d.config.esperaSorteada = b.id;
+    this.salvar();
+    return b.id;
+  }
+
+  /**
+   * O que a TV mostra quando nada está passando: o fundo escolhido só para esta reunião ou,
+   * se não tiver, o de todas as reuniões (fixo ou sorteado); null = a do programa.
    */
   telaEspera(rid) {
     const r = rid && this.reuniao(rid);
-    const escolhida = r && r.telaEspera;
-    if (escolhida) {
-      const b = this.arquivoDaBiblioteca(escolhida);
-      if (b && (b.tipo === 'imagem' || b.tipo === 'fundo')) return { arquivo: b.arquivo, daReuniao: true };
-      // Vídeo: passa sem som e em repetição (o som da chegada é a música da espera).
-      if (b && b.tipo === 'video') return { arquivo: b.arquivo, video: true, capa: b.capa || null, daReuniao: true };
-      if (FUNDOS_PRONTOS.includes(escolhida) && FOTOS_PRONTAS.has(escolhida)) return { foto: '/comum/fundos/' + escolhida + '.jpg', daReuniao: true };
-    }
-    const padrao = this.d.config.telaEspera;
-    if (!padrao) return null;
-    return EXT_VIDEO.includes(path.extname(padrao).slice(1).toLowerCase()) ? { arquivo: padrao, video: true } : { arquivo: padrao };
+    const daReuniao = r && this._espera(r.telaEspera);
+    return daReuniao ? { ...daReuniao, daReuniao: true } : this.esperaPadrao();
+  }
+
+  /** O vídeo da espera toca com o próprio som? Devolve a "chave" dele (o id na Biblioteca) ou null. */
+  somDaEspera(rid) {
+    const t = this.telaEspera(rid);
+    return t && t.video && t.som ? t.chave : null;
+  }
+
+  /** Liga (ou desliga) o som de um vídeo quando ele é a tela de espera. */
+  somNaEspera(bid, sim) {
+    const b = this.arquivoDaBiblioteca(bid);
+    if (!b || b.tipo !== 'video') return false;
+    if (sim) b.esperaSom = true; else delete b.esperaSom;
+    this.salvar();
+    return true;
   }
 
   /** Música que toca na tela de espera ao abrir a reunião: a da reunião, senão a padrão; 'nenhuma' = sem música. */
@@ -805,20 +921,16 @@ class Dados {
     this.salvar();
   }
 
+  /** Volta para a tela de espera do programa (foto + "Seja bem-vindo"). Não apaga nenhum fundo da Biblioteca. */
   voltarTelaEsperaDoPrograma() {
-    const antiga = this.d.config.telaEspera;
-    this.d.config.telaEspera = null;
-    this.salvar();
-    if (antiga) fs.rmSync(path.join(this.pastaMidia, antiga), { force: true });
+    return this.definirEsperaPadrao(null);
   }
 
+  /** Um arquivo do computador vira o fundo fixo de todas as reuniões: entra na Biblioteca, na aba "Tela de espera". */
   trocarTelaEspera(origem) {
-    const antiga = this.d.config.telaEspera;
-    const nome = id() + path.extname(origem).toLowerCase();
-    fs.copyFileSync(origem, path.join(this.pastaMidia, nome));
-    this.d.config.telaEspera = nome;
-    this.salvar();
-    if (antiga) fs.rmSync(path.join(this.pastaMidia, antiga), { force: true });
+    const r = this.importarArquivos([origem]);
+    const b = r.novos[0] || r.repetidos[0];
+    return b ? this.definirEsperaPadrao(b.id) : false;
   }
 }
 

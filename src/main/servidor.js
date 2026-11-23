@@ -136,6 +136,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     partes: (v, r) => telasDoVersiculo(v, r).length,
     reuniaoExiste: id => !!dados.reuniao(id),
     musicaEspera: rid => dados.musicaEspera(rid),
+    somDaEspera: rid => dados.somDaEspera(rid),
     item: (rid, iid) => dados.item(rid, iid),
     musica: bid => { const b = dados.arquivoDaBiblioteca(bid); return b && b.tipo === 'musica' ? b : undefined; },
     versao: versaoDe,
@@ -146,6 +147,11 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
 
   /** A música que está tocando (ou parada no fim), com o arquivo para o Telão. */
   function musicaTocando() {
+    if (estado.audio && estado.audio.video) {
+      // O som é o do vídeo da tela de espera.
+      const t = dados.telaEspera(estado.reuniaoId), v = dados.arquivoDaBiblioteca(estado.audio.bibliotecaId);
+      return t && t.video ? { titulo: v ? v.titulo : 'Fundo de espera', arquivo: t.arquivo, espera: true } : null;
+    }
     const b = estado.audio && dados.arquivoDaBiblioteca(estado.audio.bibliotecaId);
     return b ? { titulo: b.titulo, arquivo: b.arquivo } : null;
   }
@@ -376,13 +382,13 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       reuniao,
       versiculo: versiculoNaTv(reuniao),
       musica: musicaTocando(),
-      musicas: dados.biblioteca.filter(b => b.tipo === 'musica').map(b => ({ id: b.id, titulo: b.titulo, categoria: b.categoria || null })),
+      musicas: dados.biblioteca.filter(b => b.tipo === 'musica').map(b => ({ id: b.id, titulo: b.titulo, categoria: b.categoria || null, favorita: !!b.favorita })),
       categorias: dados.categoriasMusica,
       pastores: dados.pastores.map(p => ({ id: p.id, nome: p.nome })),
       nomesReunioes: [...new Set(dados.reunioes.map(r => r.nome).filter(Boolean))].slice(-12),
-      biblioteca: dados.biblioteca.filter(b => b.tipo !== 'fundo').map(b => ({ id: b.id, tipo: b.tipo, titulo: b.titulo, arquivo: b.arquivo, capa: b.capa || undefined, criadoEm: b.criadoEm, qtd: b.arquivos ? b.arquivos.length : undefined })),
+      biblioteca: dados.biblioteca.filter(b => b.tipo !== 'fundo').map(b => ({ id: b.id, tipo: b.tipo, titulo: b.titulo, arquivo: b.arquivo, capa: b.capa || undefined, criadoEm: b.criadoEm, favorita: b.favorita || undefined, qtd: b.arquivos ? b.arquivos.length : undefined })),
       recentes: dados.recentes(reuniao?.pastorId).map(r => ({ ...r, rotulo: biblia.rotulo(r) })),
-      info: { inicio: INICIO, url, qrSvg, tv: tvStatus, telas, celulares: celularesConectados(), telaEspera: dados.config.telaEspera, musicaEspera: dados.config.musicaEspera || null, espera: dados.telaEspera(estado.reuniaoId), logo: dados.config.logo || null, app: temApk, appVersao, volumeJanela: estado.tv.tipo === 'janela' ? volumeJanela : null, letraVersiculo: letraValida(dados.config.letraVersiculo) },
+      info: { inicio: INICIO, url, qrSvg, tv: tvStatus, telas, celulares: celularesConectados(), esperaModo: dados.esperaModo, esperaPadraoId: dados.config.esperaPadraoId || null, esperaPadrao: dados.esperaPadrao(), musicaEspera: dados.config.musicaEspera || null, espera: dados.telaEspera(estado.reuniaoId), logo: dados.config.logo || null, app: temApk, appVersao, volumeJanela: estado.tv.tipo === 'janela' ? volumeJanela : null, letraVersiculo: letraValida(dados.config.letraVersiculo) },
     };
     if (completo) {
       // Só o Painel precisa de tudo para preparar as reuniões.
@@ -415,6 +421,8 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
   }
 
   function transmitir() {
+    // O vídeo da espera que tocava com som foi trocado, tirado ou perdeu o som: o som sai junto.
+    if (estado.audio && estado.audio.video) estado = aplicar(estado, { cmd: 'acertarSomDaEspera' }, ctx);
     let simples, completo;
     for (const c of wss.clients) {
       if (c.readyState !== 1) continue;
@@ -441,6 +449,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     moverItem: c => dados.moverItem(c.reuniaoId, c.itemId, Number(c.delta)),
     removerItem: c => dados.removerItem(c.reuniaoId, c.itemId),
     renomearArquivo: c => dados.renomearArquivo(c.id, c.titulo),
+    favoritarMusica: c => dados.favoritarMusica(c.id, !!c.sim),
     // Pregação feita com imagens que já estão na Biblioteca (e, se veio uma reunião, já entra nela).
     juntarEmPregacao: c => {
       const feito = dados.juntarEmPregacao(c.ids, { titulo: c.titulo });
@@ -452,6 +461,9 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     tirarImagemDaPregacao: c => { dados.tirarImagemDaPregacao(c.id, Number(c.n)); acertarSlideDaTv(); },
     colocarImagensNaPregacao: c => dados.colocarImagensNaPregacao(c.id, c.ids),
     marcarParaEspera: c => dados.marcarParaEspera(c.id, !!c.sim),
+    somNaEspera: c => dados.somNaEspera(c.id, !!c.sim),
+    esperaModo: c => dados.definirEsperaModo(c.modo),
+    esperaPadrao: c => dados.definirEsperaPadrao(c.id || null),
     criarCategoria: c => dados.criarCategoria(c.nome),
     renomearCategoria: c => dados.renomearCategoria(c.id, c.nome),
     removerCategoria: c => dados.removerCategoria(c.id),
@@ -500,6 +512,16 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     // Pelo celular, na reunião que está acontecendo: mudar a ordem dos itens e tirar um item.
     // (O item que está na TV, ou a música que está tocando, não sai: o pastor ficaria sem os botões dele.
     //  O arquivo continua na Biblioteca.)
+    // Pelo celular: dar outro nome a uma música ou marcar como favorita.
+    if (cmd.cmd === 'renomearMusica' || cmd.cmd === 'favoritarMusica') {
+      if (papel === 'telao' || typeof cmd.id !== 'string') return;
+      const b = dados.arquivoDaBiblioteca(cmd.id);
+      if (!b || b.tipo !== 'musica') return;
+      if (cmd.cmd === 'renomearMusica') dados.renomearArquivo(cmd.id, String(cmd.titulo || '').replace(/\s+/g, ' ').trim().slice(0, 80));
+      else dados.favoritarMusica(cmd.id, !!cmd.sim);
+      transmitir();
+      return;
+    }
     if (cmd.cmd === 'moverItemDaReuniao' || cmd.cmd === 'tirarItemDaReuniao') {
       if (papel === 'telao' || !estado.reuniaoId || typeof cmd.itemId !== 'string') return;
       if (cmd.cmd === 'moverItemDaReuniao') dados.moverItem(estado.reuniaoId, cmd.itemId, Math.trunc(Number(cmd.delta)) || 0);
@@ -663,9 +685,17 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       let resposta = null;
       try { resposta = preparo(cmd); } catch (e) { ws.send(JSON.stringify({ tipo: 'erro', mensagem: e.message })); return; }
       if (cmd.pedido) ws.send(JSON.stringify({ tipo: 'resposta', pedido: cmd.pedido, resposta }));
+      // Ligaram "Tocar o som deste vídeo", ou escolheram outra tela de espera, com a reunião aberta e a TV na espera: o som já começa.
+      const ligar = cmd.cmd === 'somNaEspera' ? !!cmd.sim
+        : cmd.cmd === 'esperaPadrao' || cmd.cmd === 'esperaModo' ? true
+        : cmd.cmd === 'editarReuniao' && cmd.id === estado.reuniaoId && !!(cmd.campos && 'telaEspera' in cmd.campos);
+      if (ligar) estado = aplicar(estado, { cmd: 'acertarSomDaEspera', ligar: true }, ctx);
       transmitir();
       return;
     }
+    if (cmd.cmd === 'acertarSomDaEspera') return;   // só o próprio notebook acerta isso
+    // Abrindo uma reunião com os fundos em "sorteado": escolhe agora o fundo desta reunião.
+    if (cmd.cmd === 'escolherReuniao' && papel !== 'telao' && typeof cmd.id === 'string') dados.sortearEspera(cmd.id);
     if (cmd.cmd === 'trocarVersao' && papel === 'telao') return;
     const novo = aplicar(estado, cmd, ctx);
     if (novo === estado) return;
