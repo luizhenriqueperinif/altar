@@ -192,7 +192,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       proximo: parte + 1 < telas.length ? `continua · ${parte + 2}/${telas.length}` : prox && biblia.rotulo(prox),
       avulso: estado.tv.tipo === 'avulso',
       planejado,
-      fundo: reuniao ? reuniao.fundo : { pronto: 'ceu' },
+      fundo: reuniao ? reuniao.fundo : { pronto: dados.fundoPadrao() },
     };
   }
   // ---------- Arquivos mandados pelo celular ----------

@@ -14,10 +14,10 @@ const TIPOS_QUE_SE_REPETEM = ['musica', 'palavra'];
 const TIPOS_DA_SEMANA = ['imagem', 'video', 'pregacao'];
 const DIAS_PARA_ANTIGO = 7;
 const VERSOES = ['ACF', 'ARC', 'NVI'];
-/** Fundos de versículo que já vêm no programa (desenhados em src/web/comum/versiculo.js; as fotos ficam em src/web/comum/fundos). */
-const FUNDOS_PRONTOS = ['ceu', 'amanhecer', 'trigo', 'noite', 'oceano', 'pergaminho', 'vinho', 'floresta',
-  'amanhecer-dourado',
+/** Fundos de versículo que já vêm no programa: fotos da pasta src/web/comum/fundos (os nomes ficam em src/web/comum/versiculo.js). O primeiro é o padrão. */
+const FUNDOS_PRONTOS = [
   'biblia-aberta',
+  'amanhecer-dourado',
   'biblia-luz',
   'deserto-judeia',
   'cruz-paisagem',
@@ -47,9 +47,11 @@ const FUNDOS_QUE_VIRARAM_PRONTOS = {
   '9d3111de704f72b264a4788e1d2147a2c43c3c02': 'rio-jordao',
   '715e04710331353d560d556907c4644f12728adb': 'vale-jezreel',
 };
-const FUNDO_PADRAO = 'ceu';
-/** Fundos do programa que são fotos (servem também de tela de espera). */
-const FOTOS_PRONTAS = new Set(FUNDOS_PRONTOS.slice(8));
+const FUNDO_PADRAO = 'biblia-aberta';
+/** Fundos de cor que o programa trazia até a versão 1.1.9 e não traz mais. */
+const FUNDOS_QUE_SAIRAM = ['ceu', 'amanhecer', 'trigo', 'noite', 'oceano', 'pergaminho', 'vinho', 'floresta'];
+/** Fundos do programa que são fotos (servem também de tela de espera): hoje, todos. */
+const FOTOS_PRONTAS = new Set(FUNDOS_PRONTOS);
 
 /**
  * "Impressão digital" do arquivo: tamanho + começo + fim do conteúdo.
@@ -138,6 +140,7 @@ class Dados {
     this.d = d;
     this._fundosQueViraramProntos();
     this._esperaPadraoParaBiblioteca();
+    this._fundosDeCorQueSairam();
     return d;
   }
 
@@ -162,6 +165,15 @@ class Dados {
     cfg.telaEspera = null;
     delete cfg.telaEsperaSom;
     this.salvar();
+  }
+
+  /** Os fundos de cor saíram do programa: a reunião que usava um deles passa a usar o padrão. */
+  _fundosDeCorQueSairam() {
+    let mudou = false;
+    for (const r of this.d.reunioes) if (FUNDOS_QUE_SAIRAM.includes(r.fundo)) { r.fundo = null; mudou = true; }
+    const esc = this.d.config.fundosEscondidos;
+    if (esc && esc.some(f => FUNDOS_QUE_SAIRAM.includes(f))) { this.d.config.fundosEscondidos = esc.filter(f => !FUNDOS_QUE_SAIRAM.includes(f)); mudou = true; }
+    if (mudou) this.salvar();
   }
 
   /** Tira da Biblioteca as fotos de fundo que agora já vêm no programa; as reuniões passam a usar a do programa. */
@@ -741,7 +753,7 @@ class Dados {
   }
 
   /**
-   * Fundo dos versículos: um dos que já vêm no programa ({ pronto: 'ceu' })
+   * Fundo dos versículos: um dos que já vêm no programa ({ pronto: 'biblia-aberta' })
    * ou uma imagem da Biblioteca ({ arquivo }). Se sumiu, volta para o padrão.
    */
   fundo(fid) {
@@ -760,7 +772,7 @@ class Dados {
     return !!this.arquivoDaBiblioteca(fid);
   }
 
-  /** O padrão é o Céu; se tiraram ele, o primeiro que sobrou. */
+  /** O padrão é a Bíblia aberta; se tiraram ela, o primeiro que sobrou. */
   fundoPadrao() {
     return FUNDOS_PRONTOS.find(f => !this.fundosEscondidos.includes(f)) || FUNDO_PADRAO;
   }

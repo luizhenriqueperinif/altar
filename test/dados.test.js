@@ -231,14 +231,14 @@ test('versículos soltos de antes viram uma Palavra no lugar do primeiro', () =>
 test('copiar reunião leva os versículos e o fundo', () => {
   const d = novo();
   const { novos } = d.importarArquivos(arquivos('foto.png'));
-  const r1 = d.criarReuniao({ fundo: 'noite' });
+  const r1 = d.criarReuniao({ fundo: 'getsemani' });
   d.adicionarItens(r1.id, [novos[0].id]);
   d.adicionarVersiculo(r1.id, { ref: { l: 18, c: 23, v: 1 }, ate: 6 });
   const r2 = d.criarReuniao({ copiarDe: r1.id });
   const c = d.reuniaoCompleta(r2.id);
   assert.deepEqual(c.itens.map(i => i.tipo), ['palavra']);
   assert.deepEqual(c.itens[0].passagens.map(p => p.titulo), ['Salmos 23:1-6']);
-  assert.deepEqual(c.fundo, { pronto: 'noite' });
+  assert.deepEqual(c.fundo, { pronto: 'getsemani' });
 });
 
 test('fundo: pronto, da Biblioteca, ou o padrão quando some', () => {
@@ -250,9 +250,9 @@ test('fundo: pronto, da Biblioteca, ou o padrão quando some', () => {
   assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { arquivo: novos[0].arquivo });
   assert.equal(d.usos(novos[0].id), 1);
   d.removerDaBiblioteca(novos[0].id);
-  assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { pronto: 'ceu' });
+  assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { pronto: 'biblia-aberta' });
   d.editarReuniao(r.id, { fundo: 'qualquer-coisa' });
-  assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { pronto: 'ceu' });
+  assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { pronto: 'biblia-aberta' });
 });
 
 test('fundos nunca são apagados por "Apagar antigos"', () => {
@@ -429,15 +429,16 @@ test('imagem do vídeo: automática, a antiga é trocada e some junto com o víd
 test('tirar um fundo do programa: some da lista, a reunião que usava volta para o padrão, e dá para trazer de volta', () => {
   const d = novo();
   const r = d.criarReuniao({ data: '2026-11-08', hora: '18:00' });
-  d.editarReuniao(r.id, { fundo: 'trigo' });
-  assert.equal(d.esconderFundo('trigo'), true);
-  assert.deepEqual(d.fundosEscondidos, ['trigo']);
-  assert.equal(d.reuniaoCompleta(r.id).fundoId, 'ceu', 'volta para o padrão');
+  d.editarReuniao(r.id, { fundo: 'getsemani' });
+  assert.equal(d.esconderFundo('getsemani'), true);
+  assert.deepEqual(d.fundosEscondidos, ['getsemani']);
+  assert.equal(d.reuniaoCompleta(r.id).fundoId, 'biblia-aberta', 'volta para o padrão');
+  assert.equal(d.esconderFundo('ceu'), false, 'os fundos de cor não existem mais');
   assert.equal(d.esconderFundo('nao-existe'), false);
   // tirou o padrão: o padrão passa a ser o primeiro que sobrou
-  d.esconderFundo('ceu');
-  assert.equal(d.reuniaoCompleta(r.id).fundoId, 'amanhecer');
-  assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { pronto: 'amanhecer' });
+  d.esconderFundo('biblia-aberta');
+  assert.equal(d.reuniaoCompleta(r.id).fundoId, 'amanhecer-dourado');
+  assert.deepEqual(d.reuniaoCompleta(r.id).fundo, { pronto: 'amanhecer-dourado' });
   d.mostrarFundosDoPrograma();
   assert.deepEqual(d.fundosEscondidos, []);
 });
@@ -507,7 +508,7 @@ test('tirar uma foto do programa da tela de espera: some da lista, a reunião vo
   d.esconderEsperaDoPrograma(foto);
   assert.deepEqual(d.esperasEscondidas, [foto]);
   assert.equal(d.telaEspera(r.id), null);
-  d.esconderEsperaDoPrograma(FUNDOS_PRONTOS[0]); // cor, não é foto: ignora
+  d.esconderEsperaDoPrograma('ceu'); // não é foto do programa: ignora
   assert.deepEqual(d.esperasEscondidas, [foto]);
   d.mostrarEsperasDoPrograma();
   assert.deepEqual(d.esperasEscondidas, []);
@@ -675,4 +676,25 @@ test('música favorita: marca e desmarca; só música pode ser favorita', () => 
   assert.equal(d.arquivoDaBiblioteca('m1').favorita, undefined);
   assert.equal(d.favoritarMusica('v1', true), false);
   assert.equal(d.favoritarMusica('nao-existe', true), false);
+});
+
+test('os fundos de cor saíram do programa: o padrão é a Bíblia aberta e quem usava uma cor passa para o padrão', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Dados, FUNDOS_PRONTOS } = require('../src/main/dados');
+  assert.equal(FUNDOS_PRONTOS[0], 'biblia-aberta');
+  assert.equal(FUNDOS_PRONTOS.length, 12);
+  for (const f of FUNDOS_PRONTOS) assert.ok(fs.existsSync(path.join(__dirname, '..', 'src', 'web', 'comum', 'fundos', f + '.jpg')), f);
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'altar-fc-'));
+  const d0 = new Dados(pasta);
+  const r1 = d0.criarReuniao({ data: '2026-11-03', hora: '18:00' }), r2 = d0.criarReuniao({ data: '2026-11-04', hora: '18:00' });
+  assert.equal(d0.reuniaoCompleta(r1.id).fundoId, 'biblia-aberta');      // instalação nova: Bíblia aberta
+  // dados de uma versão antiga: reunião com fundo de cor, e cores tiradas da lista
+  d0.d.reunioes.find(r => r.id === r1.id).fundo = 'noite';
+  d0.d.reunioes.find(r => r.id === r2.id).fundo = 'getsemani';
+  d0.d.config.fundosEscondidos = ['ceu', 'trigo', 'paisagem'];
+  d0.salvar();
+  const d = new Dados(pasta);
+  assert.deepEqual(d.reuniaoCompleta(r1.id).fundo, { pronto: 'biblia-aberta' });
+  assert.deepEqual(d.reuniaoCompleta(r2.id).fundo, { pronto: 'getsemani' });   // a foto escolhida continua
+  assert.deepEqual(d.fundosEscondidos, ['paisagem']);
 });

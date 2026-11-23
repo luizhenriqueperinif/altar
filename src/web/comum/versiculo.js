@@ -2,17 +2,9 @@
 (function () {
   // Fundos que já vêm no programa. O id é guardado na reunião (ver FUNDOS_PRONTOS em src/main/dados.js).
   const FUNDOS = [
-    { id: 'ceu', nome: 'Céu', css: 'linear-gradient(180deg, #2f5f99 0%, #7fa6cf 55%, #e8c89c 100%)', escuro: false },
-    { id: 'amanhecer', nome: 'Amanhecer', css: 'linear-gradient(160deg, #3b1f4a 0%, #b5525a 50%, #f2a65a 100%)', escuro: false },
-    { id: 'trigo', nome: 'Trigo', css: 'radial-gradient(120% 90% at 50% 100%, #e9c46a 0%, #a8781f 55%, #5a3d10 100%)', escuro: false },
-    { id: 'noite', nome: 'Noite', css: 'radial-gradient(120% 100% at 50% 0%, #22325f 0%, #0a0f1f 70%)', escuro: false },
-    { id: 'oceano', nome: 'Oceano', css: 'linear-gradient(180deg, #0c3c5a 0%, #136f86 60%, #1fa3a3 100%)', escuro: false },
-    { id: 'pergaminho', nome: 'Pergaminho', css: 'radial-gradient(130% 100% at 50% 40%, #f7ecd2 0%, #e6d2a5 70%, #c9ad73 100%)', escuro: true },
-    { id: 'vinho', nome: 'Vinho', css: 'linear-gradient(160deg, #3d0d18 0%, #7a1f33 60%, #a8443f 100%)', escuro: false },
-    { id: 'floresta', nome: 'Floresta', css: 'linear-gradient(170deg, #0f2a1d 0%, #275c3a 60%, #6f9a55 100%)', escuro: false },
-    // Fotos que já vêm no programa (pasta src/web/comum/fundos).
-    { id: 'amanhecer-dourado', nome: 'Amanhecer dourado', foto: '/comum/fundos/amanhecer-dourado.jpg', escuro: false },
+    // Fotos da pasta src/web/comum/fundos. A primeira é o padrão.
     { id: 'biblia-aberta', nome: 'Bíblia aberta', foto: '/comum/fundos/biblia-aberta.jpg', escuro: false },
+    { id: 'amanhecer-dourado', nome: 'Amanhecer dourado', foto: '/comum/fundos/amanhecer-dourado.jpg', escuro: false },
     { id: 'biblia-luz', nome: 'Bíblia com luz', foto: '/comum/fundos/biblia-luz.jpg', escuro: false },
     { id: 'deserto-judeia', nome: 'Deserto da Judeia', foto: '/comum/fundos/deserto-judeia.jpg', escuro: false },
     { id: 'cruz-paisagem', nome: 'Cruz na paisagem', foto: '/comum/fundos/cruz-paisagem.jpg', escuro: false },
@@ -29,7 +21,7 @@
   // Fundo desenhado (céu, amanhecer...): um véu leve, para a letra branca não sumir nas partes claras.
   const comVeuLeve = css => `linear-gradient(rgba(0,0,0,.26), rgba(0,0,0,.26)), ${css}`;
 
-  /** Estilo do fundo: { pronto: 'ceu' } ou { arquivo } (imagem da Biblioteca, com um véu escuro para o texto aparecer). */
+  /** Estilo do fundo: { pronto: 'biblia-aberta' } ou { arquivo } (imagem da Biblioteca, com um véu escuro para o texto aparecer). */
   function estiloFundo(fundo, midia) {
     if (fundo && fundo.arquivo) {
       return { bg: comVeu(midia(fundo.arquivo)), escuro: false };
