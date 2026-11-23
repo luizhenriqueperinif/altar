@@ -27,7 +27,7 @@
   let perguntouDono = false;   // a pergunta abre sozinha uma vez só
   let recentes = null;         // últimas fotos e vídeos do celular, embaixo dessa pergunta (só no aplicativo): { status, itens, sel }
   let escolhendoBib = null;    // colocar da Biblioteca na reunião: { aba, sel: [ids na ordem marcada] }
-  let novaReuniao = null;      // criando reunião pelo celular: { pastorId, nome }
+  let novaReuniao = null;      // criando reunião pelo celular: { nome }
   let escolhendoJanela = null; // lista das janelas abertas no notebook: { lista: null (carregando) | [...] }
   let naInicio = false;        // voltou para a lista de reuniões (botão de voltar) com a reunião ainda aberta
   let reuniaoVista = null;
@@ -86,7 +86,8 @@
   const mmss = s => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const enviar = cmd => conexao.enviar(cmd);
-  const versao = () => (dados && dados.reuniao && dados.reuniao.versao) || 'ACF';
+  // A versão da Bíblia: a que o pastor escolheu no celular nesta reunião; senão a da reunião.
+  const versao = () => (dados && dados.estado && dados.estado.versao) || (dados && dados.reuniao && dados.reuniao.versao) || 'ACF';
 
   function carregarIndice(v) {
     if (indices[v]) return;
@@ -217,14 +218,14 @@
   function botaoReuniao(r, mostrarDia) {
     const dia = mostrarDia ? `${diaSemana(r.data)} ${r.data.split('-').reverse().slice(0, 2).join('/')} · ` : '';
     return `<button class="reuniao-btn" data-cmd="escolherReuniao" data-id="${r.id}">
-      <span class="hora">${esc(r.hora)}</span><span class="p">${r.pastor ? esc(r.pastor) : esc(tituloReuniao(r))}</span>
-      <span class="v">${esc(dia)}${r.pastor ? esc(tituloReuniao(r)) + ' · ' : ''}${r.qtd} ${r.qtd === 1 ? 'item' : 'itens'}</span></button>`;
+      <span class="hora">${esc(r.hora)}</span><span class="p">${esc(tituloReuniao(r))}</span>
+      <span class="v">${esc(dia)}${r.qtd} ${r.qtd === 1 ? 'item' : 'itens'}</span></button>`;
   }
 
-  // Topo com a logo da igreja (ou a cruz do Altar) e o nome do programa.
+  // Topo com a logo da igreja (ou a cruz do Altar), o nome do programa e, do outro lado, de quem é este celular.
   function marca() {
-    const logo = dados && dados.info && dados.info.logo;
-    return `<div class="marca-cel"><img class="marca-logo" src="${logo ? '/logo.png?v=' + encodeURIComponent(logo) : '/comum/icone.svg'}" alt="">Altar</div>`;
+    const logo = dados && dados.info && dados.info.logo, quem = nomeDoDono();
+    return `<div class="marca-cel"><img class="marca-logo" src="${logo ? '/logo.png?v=' + encodeURIComponent(logo) : '/comum/icone.svg'}" alt="">Altar${quem ? `<span class="marca-quem">${I('pessoa')}${esc(quem)}</span>` : ''}</div>`;
   }
 
   // O ícone do app no celular acompanha a logo (muda o endereço para o celular não usar a antiga).
@@ -262,9 +263,12 @@
       <button class="btn primary" data-acao="novaReuniao">${I('mais')} Criar reunião agora</button>
       ${dados.estado.tv.tipo === 'janela' ? '' : `<button class="btn" data-acao="abrirJanelas">${I('janela')} Mostrar uma janela do notebook</button>`}
       <button class="btn" data-acao="abrirEnvio">${I('enviar')} Mandar fotos, vídeos ou músicas para a Biblioteca</button>
-      <button class="btn" data-acao="donoAbrir">${I('pessoa')} ${nomeDoDono() ? `Este celular é de ${esc(nomeDoDono())} (trocar)` : 'Dizer de quem é este celular'}</button>
-      ${cartaoApp()}
-      ${noApp() ? `<button class="btn" data-acao="desconectarApp">${I('trocar')} Desconectar deste notebook</button>` : ''}
+      <section class="este-celular" aria-label="Este celular">
+        <div class="eyebrow">Este celular</div>
+        <button class="btn" data-acao="donoAbrir">${I('pessoa')} ${nomeDoDono() ? `É de ${esc(nomeDoDono())} (trocar)` : 'Dizer de quem é este celular'}</button>
+        ${cartaoApp()}
+        ${noApp() ? `<button class="btn sair" data-acao="desconectarApp">${I('trocar')} Desconectar deste notebook</button>` : ''}
+      </section>
     </div>`;
   }
 
@@ -359,7 +363,7 @@
     return `<div class="painel" role="dialog" aria-label="De quem é este celular">
       <div class="painel-topo"><h2>De quem é este celular?</h2><button class="btn" data-acao="donoFechar">${I('fechar')} Fechar</button></div>
       <div class="painel-corpo nova-reuniao" data-scroll="dono">
-      <p class="note">O Altar guarda o seu nome neste celular. Assim, ao criar uma reunião, o seu nome já vem escolhido.</p>
+      <p class="note">O Altar guarda o seu nome neste celular e mostra no alto da tela. É só para você ver que este celular é o seu: não muda nada na reunião.</p>
       ${pastores.length ? `<div class="eyebrow">Toque no seu nome</div>
         <div class="escolha-cel">${pastores.map(p => `<button class="btn ${meu && meu.id === p.id ? 'sel' : ''}" data-acao="donoEscolher" data-id="${p.id}">${esc(p.nome)}</button>`).join('')}</div>` : ''}
       <div class="eyebrow">${pastores.length ? 'Não está na lista? Escreva o seu nome' : 'Escreva o seu nome'}</div>
@@ -373,13 +377,10 @@
     const n = novaReuniao;
     const dia = new Date(dados.hoje + 'T12:00').getDay();
     const nomes = [...new Set([NOMES_DA_SEMANA[dia], ...(dados.nomesReunioes || []).slice().reverse(), ...NOMES_DA_SEMANA])].slice(0, 8);
-    const pastores = dados.pastores || [];
     return `<div class="painel" role="dialog" aria-label="Criar reunião">
       <div class="painel-topo"><h2>Criar reunião agora</h2><button class="btn" data-acao="fecharNovaReuniao">${I('fechar')} Fechar</button></div>
       <div class="painel-corpo nova-reuniao" data-scroll="nova">
       <p class="note">A reunião fica marcada para hoje, agora, e já começa. Depois é só colocar as coisas nela.</p>
-      ${pastores.length ? `<div class="eyebrow">Quem vai conduzir?</div>
-        <div class="escolha-cel">${pastores.map(p => `<button class="btn ${n.pastorId === p.id ? 'sel' : ''}" data-acao="nrPastor" data-id="${p.id}">${esc(p.nome)}</button>`).join('')}</div>` : ''}
       <div class="eyebrow">Nome da reunião</div>
       <div class="escolha-cel">${nomes.map(x => `<button class="btn ${n.nome === x ? 'sel' : ''}" data-acao="nrNome" data-nome="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       <input type="text" id="nr-nome" class="campo-cel" value="${esc(n.nome)}" placeholder="Ou escreva outro nome" maxlength="60" autocomplete="off">
@@ -559,17 +560,17 @@
   function listaReuniao() {
     const r = dados.reuniao, e = dados.estado;
     if (!r.itens.length) { arrumando = false; tirandoItem = null; }
-    if (arrumando) return `<div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([pastorDe(r), r.hora].filter(Boolean).join(' · '))}</span></div>
+    if (arrumando) return `<div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([quemAqui(r), r.hora].filter(Boolean).join(' · '))}</span></div>
       <div class="arr-topo"><p class="note">Para mudar a ordem, segure nas três barrinhas ${I('pega')} e arraste. A lixeira tira só da reunião: o arquivo continua na Biblioteca.</p>
         <button class="btn primary" data-acao="arrPronto">${I('ok')} Pronto</button></div>
       <div class="cards">${r.itens.map(cartaoArrumar).join('')}</div>
       <button class="btn primary huge" data-acao="arrPronto">${I('ok')} Pronto</button>`;
     return `${controleJanela()}
-      <div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([pastorDe(r), r.hora].filter(Boolean).join(' · '))}</span></div>
+      <div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([quemAqui(r), r.hora].filter(Boolean).join(' · '))}</span></div>
       <div class="eyebrow">Toque para mostrar na TV</div>
       <div class="cards">${r.itens.length ? r.itens.map(cartao).join('') : '<p class="note">Esta reunião ainda não tem itens.</p>'}</div>
       <section class="mais-opcoes" aria-label="Colocar ou mostrar outras coisas">
-        <button class="btn" data-acao="abrirColocar">${I('mais')} Colocar na reunião</button>
+        <button class="btn primary" data-acao="abrirColocar">${I('mais')} Colocar na reunião</button>
         ${r.itens.length ? `<button class="btn" data-acao="arrumar">${I('trocar')} Mudar a ordem ou tirar um item</button>` : ''}
         <button class="btn" data-acao="abrirTelegram">${I('video')} Fotos e vídeos do Telegram</button>
         ${e.tv.tipo === 'janela' ? '' : `<button class="btn" data-acao="abrirJanelas">${I('janela')} Mostrar uma janela do notebook na TV</button>`}
@@ -577,6 +578,8 @@
       <button class="btn danger encerrar-sozinho" data-acao="encerrar">${I('ok')} Encerrar reunião</button>`;
   }
 
+  // O nome que aparece na reunião: o do pastor deste celular; se o celular não sabe de quem é, o pastor da reunião.
+  const quemAqui = r => nomeDoDono() || pastorDe(r);
   const pastorDe = r => { const p = (dados.pastores || []).find(x => x.id === r.pastorId); return p ? p.nome : r.pastor || ''; };
   function telaReuniao() {
     const r = dados.reuniao, e = dados.estado, aba = abaAtual();
@@ -591,7 +594,7 @@
     const nav = (v, acao, ic, nome) => `<button class="m-nav-btn ${aba === v ? 'sel' : ''}" data-acao="${acao}"${aba === v ? ' aria-current="page"' : ''}>${I(ic)}${nome}</button>`;
     return `<div class="moldura">
       <header class="m-topo">
-        <div class="m-cab"><b class="m-nome">${esc(tituloReuniao(r))}</b><span class="m-quem">${esc([pastorDe(r), r.hora].filter(Boolean).join(' · '))}</span></div>
+        <div class="m-cab"><b class="m-nome">${esc(tituloReuniao(r))}</b><span class="m-quem">${esc([quemAqui(r), r.hora].filter(Boolean).join(' · '))}</span></div>
         <div class="m-agora">
         <div class="m-tv" aria-hidden="true">${miniTv()}</div>
         <div class="m-info"><span class="m-eb">Na TV agora</span><b class="m-rot">${esc(rotuloCurto())}</b></div>
@@ -633,13 +636,18 @@
     const rodape = vs.avulso
       ? `<button class="btn huge" data-cmd="voltarReuniao">${I('voltar')} Voltar para a reunião</button>`
       : '';
-    return `<h2 class="m-titulo">${esc(vs.rotulo)} · ${esc(vs.versao)}${vs.partes > 1 ? ` · ${vs.parte + 1}/${vs.partes}` : ''}</h2>
-        <div class="capbar">
+    // O texto para o pastor ler, em destaque; no alto dele, a versão da Bíblia (um toque troca).
+    const versoes = (vs.versoes || []).length > 1 ? `<span class="leitura-versoes" role="group" aria-label="Versão da Bíblia">${vs.versoes.map(v =>
+      `<button class="btn ${v === vs.versao ? 'sel' : ''}" data-acao="trocarVersao" data-v="${esc(v)}" aria-pressed="${v === vs.versao}">${esc(v)}</button>`).join('')}</span>`
+      : `<span class="leitura-versao">${esc(vs.versao)}</span>`;
+    return `<div class="capbar">
           <button class="btn" data-cmd="passoVersiculo" data-delta="-1" ${vs.anterior ? '' : 'disabled'}>${I('esq')}<small>${esc(vs.anterior || 'início')}</small></button>
           <button class="btn atual" data-acao="abrirCapitulos">${esc(vs.capitulo)}<small>trocar capítulo ou livro</small></button>
           <button class="btn primary" data-cmd="passoVersiculo" data-delta="1" ${vs.proximo ? '' : 'disabled'}>${I('dir')}<small>${esc(vs.proximo || 'fim')}</small></button>
         </div>
-        <div class="leitura" aria-label="Texto que está na TV"><p>${vs.parte ? '' : `<b class="leitura-n">${vs.ref.v}</b>`}${esc(vs.texto)}</p></div>
+        <div class="leitura" aria-label="Texto que está na TV">
+          <div class="leitura-topo"><h2 class="leitura-ref">${esc(vs.rotulo)}${vs.partes > 1 ? `<small>${vs.parte + 1}/${vs.partes}</small>` : ''}</h2>${versoes}</div>
+          <p>${vs.parte ? '' : `<b class="leitura-n">${vs.ref.v}</b>`}${esc(vs.texto)}</p></div>
         ${aviso ? `<p class="note">${aviso}</p>` : ''}
         ${gradeCapitulo(vs, palavra)}
         ${preparados}
@@ -1273,6 +1281,7 @@
     // Arrumar a reunião pelo celular: ordem dos itens e tirar um item
     arrumar: () => { arrumando = true; tirandoItem = null; },
     arrPronto: () => { arrumando = false; tirandoItem = null; },
+    trocarVersao: el => { if (el.dataset.v !== (dados.versiculo && dados.versiculo.versao)) enviar({ cmd: 'trocarVersao', versao: el.dataset.v }); },
     arrTirar: el => { tirandoItem = tirandoItem === el.dataset.item ? null : el.dataset.item; },
     arrTirarNao: () => { tirandoItem = null; },
     arrTirarSim: el => { tirandoItem = null; enviar({ cmd: 'tirarItemDaReuniao', itemId: el.dataset.item }); },
@@ -1292,9 +1301,7 @@
       try { window.AltarApp.atualizar(); } catch { atualizacaoApp = { status: 'erro' }; }
     },
     novaReuniao: () => {
-      // Quem vai conduzir já vem escolhido: o pastor deste celular (ou o único da lista).
-      const p = dados.pastores || [], meu = meuPastor();
-      novaReuniao = { pastorId: meu ? meu.id : p.length === 1 ? p[0].id : null, nome: '' };
+      novaReuniao = { nome: '' };
     },
     // De quem é este celular
     donoAbrir: () => { perguntandoDono = { nome: '' }; },
@@ -1315,10 +1322,11 @@
       perguntandoDono = null;
     },
     fecharNovaReuniao: () => { novaReuniao = null; },
-    nrPastor: el => { novaReuniao.pastorId = novaReuniao.pastorId === el.dataset.id ? null : el.dataset.id; },
     nrNome: el => { novaReuniao.nome = novaReuniao.nome === el.dataset.nome ? '' : el.dataset.nome; },
     nrCriar: () => {
-      enviar({ cmd: 'criarReuniaoAgora', pastorId: novaReuniao.pastorId, nome: novaReuniao.nome });
+      // Ninguém escolhe "quem vai conduzir": a reunião fica com o pastor deste celular, se ele disse quem é.
+      const meu = meuPastor();
+      enviar({ cmd: 'criarReuniaoAgora', pastorId: meu ? meu.id : null, nome: novaReuniao.nome });
       novaReuniao = null;
     },
     cartao: el => {

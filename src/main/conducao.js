@@ -19,6 +19,7 @@ const refValida = r => r && Number.isInteger(r.l) && Number.isInteger(r.c) && Nu
  *   reuniaoExiste(id): boolean,
  *   musicaEspera(reuniaoId): string|null,  música que toca na tela de espera ao abrir a reunião
  *   versao(e): string,                       versão da Bíblia do que está na TV
+ *   versoes: string[],                       as versões que existem (para o 'trocarVersao')
  *   existe(versao, ref): boolean,
  *   vizinho(versao, ref, delta): object|null,
  *   partes(versao, ref): number            em quantas telas o versículo aparece (letra grande); sem isso, 1
@@ -122,6 +123,17 @@ function aplicarComando(e, cmd, ctx) {
       // Voltando, cai na última tela do versículo anterior (é a ordem da leitura).
       const ultima = delta === -1 ? partes(prox) - 1 : 0;
       return { ...e, tv: ultima > 0 ? { ...tv, ref: prox, parte: ultima } : { ...tv, ref: prox } };
+    }
+
+    case 'trocarVersao': {
+      // O pastor troca a versão da Bíblia pelo celular (ACF, ARC, NVI...). Vale para o que está na TV e para os
+      // próximos versículos, até o fim da reunião ou até ele trocar de novo.
+      const versao = String(cmd.versao || '');
+      if (!e.reuniaoId || !ctx.versoes || !ctx.versoes.includes(versao) || e.versao === versao) return e;
+      if (!e.tv.ref) return { ...e, versao };
+      if (!ctx.existe(versao, e.tv.ref)) return e;   // esse versículo não existe na outra versão: fica como está
+      const { parte, ...tv } = e.tv;                  // o texto muda: começa da primeira tela
+      return { ...e, versao, tv };
     }
 
     case 'irVersiculo': {

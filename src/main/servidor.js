@@ -120,8 +120,9 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     return it && it.passagens ? it.passagens.find(p => p.id === e.tv.passagemId) || null : null;
   }
 
-  /** Versão da Bíblia do que está na TV: a da passagem preparada, senão a do pastor da reunião. */
+  /** Versão da Bíblia do que está na TV: a que o pastor escolheu no celular nesta reunião; senão a da passagem preparada; senão a do pastor da reunião. */
   function versaoDe(e) {
+    if (e.versao && biblia.VERSOES.includes(e.versao)) return e.versao;
     const p = passagemNaTv(e);
     if (p && p.versao) return p.versao;
     const r = e.reuniaoId && dados.reuniaoCompleta(e.reuniaoId);
@@ -138,6 +139,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     item: (rid, iid) => dados.item(rid, iid),
     musica: bid => { const b = dados.arquivoDaBiblioteca(bid); return b && b.tipo === 'musica' ? b : undefined; },
     versao: versaoDe,
+    versoes: biblia.VERSOES,
     existe: (v, r) => biblia.existe(v, r),
     vizinho: (v, r, d) => biblia.vizinho(v, r, d),
   };
@@ -170,7 +172,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     const telas = telasDoVersiculo(versao, ref);
     const parte = Math.min(estado.tv.parte || 0, telas.length - 1);
     return {
-      ref, versao,
+      ref, versao, versoes: biblia.VERSOES,
       texto: telas[parte],
       parte, partes: telas.length,
       letraMax: maxDaLetra(dados.config.letraVersiculo),
@@ -664,6 +666,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       transmitir();
       return;
     }
+    if (cmd.cmd === 'trocarVersao' && papel === 'telao') return;
     const novo = aplicar(estado, cmd, ctx);
     if (novo === estado) return;
     estado = novo;

@@ -1,7 +1,9 @@
 /* Versículo na TV (e nas miniaturas). O tamanho da letra é calculado pelo versiculo.js. */
 .vs { position: relative; width: 100%; height: 100%; overflow: hidden; color: #fff; font-family: "Atkinson Hyperlegible", var(--font-ui); }
 .vs-caixa { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .6em; text-align: center; box-sizing: border-box; }
-.vs-texto { margin: 0; font-weight: 700; line-height: 1.3; text-wrap: balance; overflow-wrap: break-word; max-width: 100%; text-shadow: 0 .05em .3em rgba(0, 0, 0, .55); }
-.vs-ref { font-weight: 700; letter-spacing: .04em; opacity: .92; text-shadow: 0 .05em .3em rgba(0, 0, 0, .6); }
-.vs-escuro { color: #33240f; }
-.vs-escuro .vs-texto, .vs-escuro .vs-ref { text-shadow: none; }
+/* Letra nítida: contorno escuro fino por trás da letra e uma sombra curta (sem névoa em volta). */
+.vs-texto, .vs-ref { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; paint-order: stroke fill; -webkit-text-stroke: .05em rgba(0, 0, 0, .55); text-shadow: 0 .035em .09em rgba(0, 0, 0, .85); }
+.vs-texto { margin: 0; font-weight: 700; line-height: 1.3; text-wrap: balance; overflow-wrap: break-word; max-width: 100%; }
+.vs-ref { font-weight: 700; letter-spacing: .04em; }
+.vs-escuro { color: #2a1c08; }
+.vs-escuro .vs-texto, .vs-escuro .vs-ref { text-shadow: none; -webkit-text-stroke: 0; }

@@ -24,8 +24,10 @@
     { id: 'rio-jordao', nome: 'Rio Jordão', foto: '/comum/fundos/rio-jordao.jpg', escuro: false },
     { id: 'vale-jezreel', nome: 'Vale de Jezreel', foto: '/comum/fundos/vale-jezreel.jpg', escuro: false },
   ];
-  // Foto de fundo com um véu escuro para o texto aparecer.
-  const comVeu = url => `linear-gradient(rgba(0,0,0,.38), rgba(0,0,0,.38)), url("${url}") center / cover no-repeat`;
+  // Foto de fundo com um véu escuro para o texto aparecer (mais escuro no meio, onde fica a letra).
+  const comVeu = url => `radial-gradient(120% 95% at 50% 50%, rgba(0,0,0,.62) 0%, rgba(0,0,0,.5) 60%, rgba(0,0,0,.4) 100%), url("${url}") center / cover no-repeat`;
+  // Fundo desenhado (céu, amanhecer...): um véu leve, para a letra branca não sumir nas partes claras.
+  const comVeuLeve = css => `linear-gradient(rgba(0,0,0,.26), rgba(0,0,0,.26)), ${css}`;
 
   /** Estilo do fundo: { pronto: 'ceu' } ou { arquivo } (imagem da Biblioteca, com um véu escuro para o texto aparecer). */
   function estiloFundo(fundo, midia) {
@@ -33,7 +35,7 @@
       return { bg: comVeu(midia(fundo.arquivo)), escuro: false };
     }
     const f = FUNDOS.find(x => x.id === (fundo && fundo.pronto)) || FUNDOS[0];
-    return { bg: f.foto ? comVeu(f.foto) : f.css, escuro: f.escuro };
+    return { bg: f.foto ? comVeu(f.foto) : f.escuro ? f.css : comVeuLeve(f.css), escuro: f.escuro };
   }
 
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

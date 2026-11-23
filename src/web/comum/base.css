@@ -11,7 +11,8 @@
 
 /*
  * Visual Clássico: papel claro, azul-marinho e títulos com serifa (como um hinário).
- * O vermelho fica só no botão mais importante de cada tela. Sempre claro, de dia ou de noite.
+ * O botão mais importante de cada tela é azul-marinho cheio. O vermelho fica só para o que encerra, tira ou
+ * desconecta. Sempre claro, de dia ou de noite.
  */
 :root {
   --bg: #f7f6f2;
@@ -34,8 +35,9 @@
   --live-claro: #9fd8b5;
   --warn: #7a5200;
   --warn-bg: #fff3d6;
-  --danger: #a1301b;
-  --danger-bg: #fbece8;
+  --danger: #b3121f;
+  --danger-bg: #fbe9ea;
+  --danger-line: #e8b3b8;
   /* menu lateral do notebook: azul-marinho */
   --side: var(--navy);
   --side-ink: #ffffff;
@@ -64,9 +66,9 @@ button:disabled { opacity: .45; cursor: default; }
   transition: background-color .15s, border-color .15s, box-shadow .15s;
 }
 .btn:not(:disabled):hover { border-color: var(--line-2); background: color-mix(in srgb, var(--surface-2) 60%, var(--surface)); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.btn.primary:not(:disabled):hover { border-color: var(--accent); background: #9c0f1a; }
-.btn.danger { border-color: transparent; color: var(--danger); background: var(--danger-bg); }
+.btn.primary { background: var(--navy); border-color: var(--navy); color: var(--navy-ink); }
+.btn.primary:not(:disabled):hover { border-color: var(--navy-2); background: var(--navy-2); }
+.btn.danger { border-color: var(--danger-line); color: var(--danger); background: var(--danger-bg); }
 .btn.live { border-color: var(--live); color: var(--live); background: var(--live-bg); }
 .btn.huge { min-height: 96px; font-size: 26px; }
 .eyebrow { font-size: 15px; font-weight: 600; color: var(--muted); }

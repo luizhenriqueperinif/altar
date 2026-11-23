@@ -1039,9 +1039,9 @@
     const botao = txt => `<button class="btn primary" type="submit" ${espera}>${tgOcupado ? 'Aguarde…' : txt}</button>`;
     let corpo = '';
     if (tg.etapa === 'semChave') {
-      corpo = `<p class="note">Para o celular mostrar as conversas e os vídeos do Telegram, o Altar precisa de uma chave de aplicativo. É grátis e só se faz uma vez:</p>
+      corpo = `<p class="note">Para mostrar as conversas, as fotos e os vídeos do Telegram (no celular e no notebook), o Altar precisa de uma chave de aplicativo. É grátis e só se faz uma vez:</p>
         <ol class="passos-tg">
-          <li>Abra <b>my.telegram.org</b> e entre com o número do Telegram (chega um código no Telegram).</li>
+          <li>Abra <b>my.telegram.org</b> e entre com o número do Telegram, começando por <b>+55</b> e o DDD (ex.: +5535999991234). O código chega dentro do Telegram, não por SMS.</li>
           <li>Clique em <b>API development tools</b>.</li>
           <li>Preencha <b>App title</b> (ex.: Altar Igreja) e <b>Short name</b> (ex.: altar). Em Platform escolha <b>Desktop</b> e clique em Create application.</li>
           <li>Copie o <b>App api_id</b> e o <b>App api_hash</b> para os campos abaixo.</li>
@@ -1069,7 +1069,7 @@
           ${erro}<div class="acoes">${botao('Entrar')}<button class="btn sm" type="button" data-a="tgVoltar">Começar de novo</button></div></form>`;
     } else {
       corpo = `<div class="tg-ligado">${I('ok')}<div><b>Telegram ligado${tg.nome ? ': ' + esc(tg.nome) : ''}</b>
-          <p class="note">No celular, em "Fotos e vídeos do Telegram", aparecem as conversas que têm foto ou vídeo. O Altar só lê as conversas e baixa o que for escolhido; não manda mensagens.</p></div></div>
+          <p class="note">No celular e no notebook, em "Fotos e vídeos do Telegram", aparecem as conversas que têm foto ou vídeo. O Altar só lê as conversas e baixa o que for escolhido; não manda mensagens.</p></div></div>
         ${erro}
         <div class="acoes"><button class="btn sm danger" type="button" data-a="tgSair">Sair do Telegram</button></div>
         <p class="note">Também dá para desligar pelo próprio Telegram: Configurações › Dispositivos › "Altar (notebook da igreja)".</p>`;

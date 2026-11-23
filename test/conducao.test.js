@@ -324,3 +324,27 @@ test('sem música da espera escolhida, abrir a reunião fica em silêncio', () =
   const c = { ...ctx, musicaEspera: () => null };
   assert.equal(aplicar(estadoInicial(), { cmd: 'escolherReuniao', id: 'r1' }, c).audio, null);
 });
+
+test('trocar a versão da Bíblia: vale para o que está na TV e para os próximos, até a reunião acabar', () => {
+  const com = { ...ctx, versoes: ['ACF', 'ARC', 'NVI'], versao: e => e.versao || 'ACF', existe: (v, r) => ctx.existe(v, r) && !(v === 'NVI' && r.v === 9) };
+  const roda = (...cmds) => cmds.reduce((e, x) => aplicar(e, x, com), estadoInicial());
+  // Sem reunião aberta, ou com versão que não existe, não muda nada.
+  assert.equal(roda({ cmd: 'trocarVersao', versao: 'NVI' }).versao, undefined);
+  let e = roda({ cmd: 'escolherReuniao', id: 'r1' }, { cmd: 'trocarVersao', versao: 'XYZ' });
+  assert.equal(e.versao, undefined);
+  // Com um versículo na TV: troca a versão, fica no mesmo versículo e volta para a primeira tela.
+  e = roda({ cmd: 'escolherReuniao', id: 'r1' }, { cmd: 'mostrarVersiculo', ref: SL(3) });
+  e = aplicar({ ...e, tv: { ...e.tv, parte: 1 } }, { cmd: 'trocarVersao', versao: 'NVI' }, com);
+  assert.equal(e.versao, 'NVI');
+  assert.deepEqual(e.tv.ref, SL(3));
+  assert.equal(e.tv.parte, undefined);
+  // Continua valendo para o próximo versículo.
+  e = aplicar(e, { cmd: 'passoVersiculo', delta: 1 }, com);
+  assert.equal(com.versao(e), 'NVI');
+  // Versículo que não existe na outra versão: fica como está.
+  const f = roda({ cmd: 'escolherReuniao', id: 'r1' }, { cmd: 'mostrarVersiculo', ref: SL(9) }, { cmd: 'trocarVersao', versao: 'NVI' });
+  assert.equal(f.versao, undefined);
+  // Encerrou a reunião (ou abriu outra): volta para a versão normal.
+  assert.equal(aplicar(e, { cmd: 'encerrar' }, com).versao, undefined);
+  assert.equal(aplicar(e, { cmd: 'escolherReuniao', id: 'r1' }, com).versao, undefined);
+});
