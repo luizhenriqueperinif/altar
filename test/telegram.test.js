@@ -151,3 +151,52 @@ test('conta do Telegram: celular escolhe conversa e vídeo, baixa uma vez só e 
   ws.close(); s.fechar();
   fs.rmSync(base, { recursive: true, force: true });
 });
+
+test('conta do Telegram: uma foto da conversa entra na reunião como imagem e vai para a TV', async () => {
+  const WebSocket = require('ws');
+  const { Dados } = require('../src/main/dados');
+  const { criarServidor } = require('../src/main/servidor');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'altar-tgfoto-'));
+  const d = new Dados(base); d.config.porta = 7600 + Math.floor(Math.random() * 300);
+  const r = d.criarReuniao({});
+  // O menor JPEG que existe (o Altar guarda o arquivo como veio).
+  const jpg = Buffer.from('ffd8ffe000104a46494600010100000100010000ffdb004300030202020203020202030303030406040404040408060605060908' +
+    '0a0a090809090a0c0f0c0a0b0e0b09090d110d0e0f101011100a0c12131210130f101010ffc9000b080001000101011100ffcc000600101005ffda0008010100003f00d2cf20ffd9', 'hex');
+  const conta = {
+    ligada: () => true,
+    conversas: async () => [{ id: '55', nome: 'Pr. Marcos', tipo: 'pessoa', qt: 1, quando: 1 }],
+    videos: async () => [{ id: 9, tipo: 'foto', titulo: 'Convite da vigília', duracao: 0, tamanho: jpg.length, quando: 1, temMiniatura: false }],
+    miniatura: async () => null,
+    baixar: async (c, m, prog) => {
+      prog(100);
+      const p = fs.mkdtempSync(path.join(os.tmpdir(), 'altar-tgbx-'));
+      const arquivo = path.join(p, 'Convite da vigília.jpg'); fs.writeFileSync(arquivo, jpg);
+      return { arquivo, pasta: p, titulo: 'Convite da vigília' };
+    },
+  };
+  const s = criarServidor({ dados: d, telegram: { pasta: () => base, pastaCapas: () => base, conta } });
+  await s.iniciar();
+  const ws = new WebSocket(`ws://127.0.0.1:${d.config.porta}/ws?t=${s.token}&papel=controle`);
+  const recebidos = [];
+  ws.on('message', m => recebidos.push(JSON.parse(m)));
+  await new Promise(ok => ws.on('open', ok));
+  const espera = ms => new Promise(ok => setTimeout(ok, ms));
+  const manda = c => ws.send(JSON.stringify(c));
+  const ultimo = tipo => recebidos.filter(m => m.tipo === tipo).pop();
+
+  manda({ cmd: 'escolherReuniao', id: r.id }); await espera(100);
+  manda({ cmd: 'pedirTgVideos', conversa: '55' }); await espera(100);
+  assert.equal(ultimo('tgVideos').lista[0].tipo, 'foto');
+  manda({ cmd: 'baixarTg', conversa: '55', msg: 9, naTv: true }); await espera(300);
+  assert.equal(recebidos.filter(m => m.tipo === 'tgErro').length, 0);
+  const itens = d.reuniao(r.id).itens;
+  assert.equal(itens.length, 1);
+  const naBiblioteca = d.biblioteca.find(b => b.id === itens[0].bibliotecaId);
+  assert.equal(naBiblioteca.tipo, 'imagem');
+  assert.equal(naBiblioteca.titulo, 'Convite da vigília');
+  assert.equal(ultimo('tgPronto').mostrou, true);
+  assert.equal(ultimo('estado').estado.tv.itemId, itens[0].id);
+
+  ws.close(); s.fechar();
+  fs.rmSync(base, { recursive: true, force: true });
+});

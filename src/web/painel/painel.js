@@ -810,7 +810,7 @@
       ${secaoAtualizacao()}
       <section class="caixa">
         <h2>Vídeos baixados no notebook</h2>
-        <p class="note">Os vídeos que você baixa no Telegram do notebook também aparecem no celular, em "Vídeos do Telegram" › "Baixados no notebook".</p>
+        <p class="note">Os vídeos que você baixa no Telegram do notebook também aparecem no celular, em "Fotos e vídeos do Telegram" › "Baixados no notebook".</p>
         <div class="campo"><span>Pasta onde o Telegram salva os vídeos</span>
           <div class="t-grande pasta-tg">${esc(o.pastaTelegram)}</div>
           ${o.pastaTelegramExiste ? '' : '<p class="note">Essa pasta ainda não existe. Ela aparece quando você baixar o primeiro vídeo no Telegram.</p>'}
@@ -912,7 +912,7 @@
           ${erro}<div class="acoes">${botao('Entrar')}<button class="btn sm" type="button" data-a="tgVoltar">Começar de novo</button></div></form>`;
     } else {
       corpo = `<div class="tg-ligado">${I('ok')}<div><b>Telegram ligado${tg.nome ? ': ' + esc(tg.nome) : ''}</b>
-          <p class="note">No celular, em "Vídeos do Telegram", aparecem as conversas que têm vídeo. O Altar só lê as conversas e baixa os vídeos escolhidos; não manda mensagens.</p></div></div>
+          <p class="note">No celular, em "Fotos e vídeos do Telegram", aparecem as conversas que têm foto ou vídeo. O Altar só lê as conversas e baixa o que for escolhido; não manda mensagens.</p></div></div>
         ${erro}
         <div class="acoes"><button class="btn sm danger" type="button" data-a="tgSair">Sair do Telegram</button></div>
         <p class="note">Também dá para desligar pelo próprio Telegram: Configurações › Dispositivos › "Altar (notebook da igreja)".</p>`;

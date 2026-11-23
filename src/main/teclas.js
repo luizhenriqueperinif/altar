@@ -31,7 +31,44 @@ function numeroDaJanela(fonteId) {
 }
 
 const CODIGO = `
-using System; using System.Runtime.InteropServices; using System.Threading;
+using System; using System.Runtime.InteropServices; using System.Threading; using System.Collections.Generic; using System.Diagnostics;
+
+// O "mixer de volume" do Windows: cada programa que está tocando som tem o volume dele.
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class AltarEnumeradorDeSom { }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator {
+  int EnumAudioEndpoints();
+  [PreserveSig] int GetDefaultAudioEndpoint(int fluxo, int papel, out IMMDevice saida);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice {
+  [PreserveSig] int Activate(ref Guid iid, int contexto, IntPtr parametros, [MarshalAs(UnmanagedType.IUnknown)] out object objeto);
+}
+[Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioSessionManager2 {
+  int GetAudioSessionControl();
+  int GetSimpleAudioVolume();
+  [PreserveSig] int GetSessionEnumerator(out IAudioSessionEnumerator lista);
+}
+[Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioSessionEnumerator {
+  [PreserveSig] int GetCount(out int quantas);
+  [PreserveSig] int GetSession(int n, out IAudioSessionControl2 sessao);
+}
+[Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioSessionControl2 {
+  int GetState(); int GetDisplayName(); int SetDisplayName(); int GetIconPath(); int SetIconPath();
+  int GetGroupingParam(); int SetGroupingParam(); int RegisterAudioSessionNotification(); int UnregisterAudioSessionNotification();
+  int GetSessionIdentifier(); int GetSessionInstanceIdentifier();
+  [PreserveSig] int GetProcessId(out uint processo);
+}
+[Guid("87CE5498-68D6-44E5-9215-6DA47EF883D8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface ISimpleAudioVolume {
+  [PreserveSig] int SetMasterVolume(float nivel, ref Guid quem);
+  [PreserveSig] int GetMasterVolume(out float nivel);
+  [PreserveSig] int SetMute(bool mudo, ref Guid quem);
+  [PreserveSig] int GetMute(out bool mudo);
+}
 public static class AltarTeclas {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
@@ -40,6 +77,7 @@ public static class AltarTeclas {
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p);
+  [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")] static extern uint ProcessoDaJanela(IntPtr h, out uint processo);
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool f);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte sc, uint f, UIntPtr e);
@@ -64,7 +102,49 @@ public static class AltarTeclas {
     keybd_event((byte)vk, 0, ext | 2u, UIntPtr.Zero);
     return "ok";
   }
+  static string NomeDoProcesso(uint processo) {
+    try { return Process.GetProcessById((int)processo).ProcessName.ToLowerInvariant(); } catch { return ""; }
+  }
+  // Volume (0 a 10) do programa dono da janela; passo diferente de zero aumenta ou diminui.
+  // O navegador toca o som por outro processo com o mesmo nome (chrome, msedge...), por isso vale o nome do programa.
+  // Responde "v7" (o volume que ficou), "semsom" (o programa ainda não tocou nada) ou "fechada".
+  public static string Volume(long numero, int passo) {
+    IntPtr h = new IntPtr(numero);
+    if (!IsWindow(h)) return "fechada";
+    uint dono; ProcessoDaJanela(h, out dono);
+    string nome = NomeDoProcesso(dono);
+    if (nome == "") return "fechada";
+    var achados = new List<ISimpleAudioVolume>();
+    IMMDeviceEnumerator aparelhos = (IMMDeviceEnumerator)(new AltarEnumeradorDeSom());
+    IMMDevice saida; object o; IAudioSessionEnumerator lista; int quantas;
+    if (aparelhos.GetDefaultAudioEndpoint(0, 1, out saida) != 0) return "semsom";
+    Guid iid = typeof(IAudioSessionManager2).GUID;
+    if (saida.Activate(ref iid, 23, IntPtr.Zero, out o) != 0) return "semsom";
+    if (((IAudioSessionManager2)o).GetSessionEnumerator(out lista) != 0 || lista.GetCount(out quantas) != 0) return "semsom";
+    for (int i = 0; i < quantas; i++) {
+      IAudioSessionControl2 sessao; uint p;
+      if (lista.GetSession(i, out sessao) != 0 || sessao == null) continue;
+      if (sessao.GetProcessId(out p) == 0 && p != 0 && NomeDoProcesso(p) == nome) achados.Add((ISimpleAudioVolume)sessao);
+    }
+    if (achados.Count == 0) return "semsom";
+    float maior = 0;
+    foreach (var v in achados) { float n; if (v.GetMasterVolume(out n) == 0 && n > maior) maior = n; }
+    int nivel = (int)Math.Round(maior * 10);
+    if (passo != 0) {
+      nivel = Math.Max(0, Math.Min(10, nivel + passo));
+      Guid quem = Guid.Empty;
+      foreach (var v in achados) { v.SetMasterVolume(nivel / 10f, ref quem); if (nivel > 0) v.SetMute(false, ref quem); }
+    }
+    return "v" + nivel;
+  }
 }`;
+
+/** "v7" → { nivel: 7 }; o resto é o motivo de não ter dado certo. */
+function lerVolume(resposta) {
+  const m = /^v(\d{1,2})$/.exec(String(resposta || ''));
+  if (m && Number(m[1]) <= 10) return { nivel: Number(m[1]) };
+  return { erro: resposta === 'semsom' || resposta === 'fechada' ? resposta : 'erro' };
+}
 
 function criarTeclas() {
   let ps = null, buffer = '', fila = [];
@@ -114,7 +194,17 @@ function criarTeclas() {
     return pedir(`Frente(${n})`);
   }
 
-  return { apertar, frente, fechar() { if (ps) { try { ps.kill(); } catch {} ps = null; } } };
+  /**
+   * Volume do programa da janela, de 0 a 10 (o do "mixer de volume" do Windows, só daquele programa).
+   * `passo` 0 só lê. Responde { nivel } ou { erro: 'semsom' | 'fechada' | 'erro' }.
+   */
+  async function volume(fonteId, passo = 0) {
+    const n = numeroDaJanela(fonteId);
+    if (!n || process.platform !== 'win32') return { erro: 'erro' };
+    return lerVolume(await pedir(`Volume(${n}, ${Math.max(-10, Math.min(10, Math.trunc(Number(passo)) || 0))})`));
+  }
+
+  return { apertar, frente, volume, fechar() { if (ps) { try { ps.kill(); } catch {} ps = null; } } };
 }
 
-module.exports = { criarTeclas, teclaPara, numeroDaJanela, ehTelegram };
+module.exports = { criarTeclas, teclaPara, numeroDaJanela, ehTelegram, lerVolume };

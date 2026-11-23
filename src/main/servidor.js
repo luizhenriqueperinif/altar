@@ -380,7 +380,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       nomesReunioes: [...new Set(dados.reunioes.map(r => r.nome).filter(Boolean))].slice(-12),
       biblioteca: dados.biblioteca.filter(b => b.tipo !== 'fundo').map(b => ({ id: b.id, tipo: b.tipo, titulo: b.titulo, arquivo: b.arquivo, capa: b.capa || undefined, criadoEm: b.criadoEm, qtd: b.arquivos ? b.arquivos.length : undefined })),
       recentes: dados.recentes(reuniao?.pastorId).map(r => ({ ...r, rotulo: biblia.rotulo(r) })),
-      info: { inicio: INICIO, url, qrSvg, tv: tvStatus, telas, celulares: celularesConectados(), telaEspera: dados.config.telaEspera, musicaEspera: dados.config.musicaEspera || null, espera: dados.telaEspera(estado.reuniaoId), logo: dados.config.logo || null, app: temApk, appVersao, letraVersiculo: letraValida(dados.config.letraVersiculo) },
+      info: { inicio: INICIO, url, qrSvg, tv: tvStatus, telas, celulares: celularesConectados(), telaEspera: dados.config.telaEspera, musicaEspera: dados.config.musicaEspera || null, espera: dados.telaEspera(estado.reuniaoId), logo: dados.config.logo || null, app: temApk, appVersao, volumeJanela: estado.tv.tipo === 'janela' ? volumeJanela : null, letraVersiculo: letraValida(dados.config.letraVersiculo) },
     };
     if (completo) {
       // Só o Painel precisa de tudo para preparar as reuniões.
@@ -392,6 +392,24 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       base.reunioesCompletas = dados.reunioes.map(r => dados.reuniaoCompleta(r.id));
     }
     return JSON.stringify(base);
+  }
+
+  // Volume do programa da janela que está na TV, de 0 a 10 (o som dela sai pelo notebook, não pelo Altar).
+  // null enquanto não se sabe: o programa ainda não tocou nada, ou a janela foi fechada.
+  let volumeJanela = null;
+  /** Lê (passo 0) ou muda o volume do programa da janela. Quem pediu (`ws`) fica sabendo se não deu. */
+  function acertarVolumeJanela(passo, ws = null) {
+    if (estado.tv.tipo !== 'janela') return;
+    if (!janelas || !janelas.volume) { if (ws) mandar(ws, { tipo: 'tecla', acao: 'volume', resultado: 'erro' }); return; }
+    const fonte = estado.tv.fonteId;
+    Promise.resolve().then(() => janelas.volume(fonte, passo)).catch(() => ({ erro: 'erro' })).then(r => {
+      if (estado.tv.tipo !== 'janela' || estado.tv.fonteId !== fonte) return;   // a TV já mudou
+      const achou = !!r && Number.isInteger(r.nivel);
+      const motivo = achou ? 'ok' : ['semsom', 'fechada'].includes(r && r.erro) ? r.erro : 'erro';
+      if (ws) mandar(ws, { tipo: 'tecla', acao: 'volume', resultado: motivo });
+      const novo = achou ? r.nivel : motivo === 'erro' ? volumeJanela : null;
+      if (novo !== volumeJanela) { volumeJanela = novo; transmitir(); }
+    });
   }
 
   function transmitir() {
@@ -543,7 +561,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       };
       const ja = dados.daOrigem(origem);
       if (ja) { pronto(ja.id, cmd.naTv); return; }
-      if (baixandoTg) { mandar(ws, { tipo: 'tgErro', mensagem: 'Espere o outro vídeo terminar de baixar.' }); return; }
+      if (baixandoTg) { mandar(ws, { tipo: 'tgErro', mensagem: 'Espere o outro terminar de baixar.' }); return; }
       baixandoTg = { conversa, msg, pct: 0, naTv: typeof cmd.naTv === 'boolean' ? cmd.naTv : null };
       let ultimo = -1;
       const avisar = pct => { if (pct !== ultimo) { ultimo = pct; baixandoTg && (baixandoTg.pct = pct); mandar(ws, { tipo: 'tgProgresso', conversa, msg, pct }); } };
@@ -554,7 +572,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
           try { fs.rmSync(pasta, { recursive: true, force: true }); } catch {}
           const b = r.novos[0] || r.repetidos[0];
           if (b && r.novos[0] && titulo) dados.renomearArquivo(b.id, titulo); // com "?" e "!" que o nome do arquivo não aceita
-          if (!b) throw new Error('O vídeo baixou, mas não deu para colocar na Biblioteca.');
+          if (!b) throw new Error('Baixou, mas não deu para colocar na Biblioteca.');
           dados.anotarOrigem(b.id, origem);
           if (estado.reuniaoId) pronto(b.id, baixandoTg && baixandoTg.naTv);
           else { transmitir(); mandar(ws, { tipo: 'tgPronto', conversa, msg, itemId: null, mostrou: false }); }
@@ -568,6 +586,14 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       if (!['playPausa', 'voltar', 'avancar', 'telaCheia'].includes(cmd.acao)) return;
       Promise.resolve().then(() => janelas.apertar(estado.tv.fonteId, estado.tv.nome, cmd.acao)).catch(() => 'erro')
         .then(r => mandar(ws, { tipo: 'tecla', acao: cmd.acao, resultado: r }));
+      // O programa só aparece no mixer do Windows depois que começa a tocar: confere o volume logo depois do play.
+      if (volumeJanela == null) setTimeout(() => acertarVolumeJanela(0), 1500);
+      return;
+    }
+    if (cmd.cmd === 'volumeJanela') {
+      if (papel === 'telao' || estado.tv.tipo !== 'janela') return;
+      const passo = Number(cmd.delta) > 0 ? 1 : Number(cmd.delta) < 0 ? -1 : 0;
+      acertarVolumeJanela(passo, ws);
       return;
     }
     const preparo = PREPARO[cmd.cmd];
@@ -585,6 +611,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     // O navegador para de desenhar quando a janela fica coberta por outra (na TV fica cinza, só o som sai):
     // por isso a janela que vai para a TV vem para a frente no notebook.
     if (cmd.cmd === 'mostrarJanela' && janelas && janelas.frente) Promise.resolve().then(() => janelas.frente(estado.tv.fonteId)).catch(() => {});
+    if (cmd.cmd === 'mostrarJanela') { volumeJanela = null; acertarVolumeJanela(0); }
     // Guarda em "Últimos usados" do pastor o versículo que acabou de abrir.
     if (['mostrarVersiculo', 'mostrar', 'mostrarPassagem'].includes(cmd.cmd) && estado.tv.ref) {
       dados.lembrarVersiculo(dados.reuniao(estado.reuniaoId)?.pastorId, estado.tv.ref);

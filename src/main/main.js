@@ -561,7 +561,7 @@ app.whenReady().then(async () => {
   dados = new Dados(path.join(app.getPath('userData'), 'dados'));
   servidor = criarServidor({
     dados,
-    janelas: { listar: () => listarJanelas(true), apertar: teclas.apertar, frente: teclas.frente },
+    janelas: { listar: () => listarJanelas(true), apertar: teclas.apertar, frente: teclas.frente, volume: teclas.volume },
     telegram: { pasta: pastaTelegram, pastaCapas: pastaCapasTelegram, aoPedir: () => setTimeout(tirarCapas, 300), conta: contaTelegram() },
     ...opcoesPdf,
     apk: CAMINHO_APK,

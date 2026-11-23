@@ -297,6 +297,17 @@ public class MainActivity extends Activity {
                 false, "Tentar de novo", this::conectar, "Ler o QR code de novo", this::lerQr);
     }
 
+    /** A pessoa pediu para desconectar (trocar de notebook, ou o código mudou): esquece o endereço e o código. */
+    private void desconectar() {
+        tentativa++;   // uma procura em andamento não reconecta por conta própria
+        guardado.edit().remove(HOST).remove(PORTA).remove(TOKEN).apply();
+        midiasListadas.clear();
+        paginaFalhou = true;   // a página em branco que entra no lugar não esconde a tela do QR code
+        pagina.stopLoading();
+        pagina.loadUrl("about:blank");
+        telaLerQr("Este celular foi desconectado. Para conectar, abra o Altar no notebook e leia o QR code que aparece na tela dele.");
+    }
+
     // ---------- endereço do notebook ----------
 
     private boolean temEndereco() {
@@ -551,6 +562,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void lerQr() {
             naTela.post(MainActivity.this::lerQr);
+        }
+
+        /** Esquece o notebook deste celular e volta para a tela de ler o QR code. */
+        @JavascriptInterface
+        public void desconectar() {
+            naTela.post(MainActivity.this::desconectar);
         }
 
         /** "sim": o app já pode ver as fotos e vídeos do celular; "pedir": ainda falta a pessoa permitir. */

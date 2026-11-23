@@ -313,6 +313,11 @@ body { min-height: 100vh; min-height: 100dvh; }
 .jan-botoes .pp { display: flex; gap: 0; }
 .jan-botoes .pp .i { width: 28px; height: 28px; }
 .jan-botoes .pp .i:first-child { fill: currentColor; }
+.jan-vol { display: grid; grid-template-columns: minmax(0, 1fr) 64px 44px 64px; gap: 8px; align-items: center; }
+.jan-vol span { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; color: var(--navy); }
+.jan-vol span .i { width: 24px; height: 24px; }
+.jan-vol .btn { min-height: 56px; padding: 0; }
+.jan-vol .hud-n { font-size: 22px; }
 .jan-mais { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .jan-mais .btn { min-height: 56px; font-size: 16px; }
 .janelas-cel { display: grid; gap: 10px; }

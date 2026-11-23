@@ -1,6 +1,7 @@
 // Conta do Telegram ligada ao Altar: o pastor entra uma vez no notebook (número + código)
-// e depois escolhe, pelo celular, a conversa e o vídeo. O Altar só LÊ: lista conversas,
-// lista os vídeos e baixa o escolhido. Nunca manda mensagem nem mexe em nada da conta.
+// e depois escolhe, pelo celular, a conversa e o vídeo ou a foto. O Altar só LÊ: lista conversas,
+// lista os vídeos e as fotos e baixa o escolhido. Nunca manda mensagem nem mexe em nada da conta.
+// (Os nomes "videos", "contarVideos"... são de quando só havia vídeo; hoje valem para fotos também.)
 //
 // A parte que fala com o Telegram de verdade fica em `criarAdaptadorGram` (biblioteca GramJS);
 // o resto recebe um adaptador, para os testes usarem um falso.
@@ -190,7 +191,7 @@ function criarContaTelegram({ arquivo, pastaCache, cifrar, decifrar, criarAdapta
     ligada: () => etapa === 'ligado',
 
     /**
-     * Conversas que têm vídeo, a mais recente primeiro. Responde na hora com a lista guardada
+     * Conversas que têm vídeo ou foto, a mais recente primeiro (na ordem dos chats do Telegram). Responde na hora com a lista guardada
      * (e, se ela tiver mais de 1 minuto, atualiza por trás para a próxima vez).
      */
     async conversas({ forcar = false } = {}) {
@@ -236,8 +237,8 @@ function criarContaTelegram({ arquivo, pastaCache, cifrar, decifrar, criarAdapta
       return e;
     },
 
-    /** Vídeos de uma conversa, o mais novo primeiro. */
-    async videos(conversaId, limite = 30) {
+    /** Vídeos e fotos de uma conversa, o mais novo primeiro. */
+    async videos(conversaId, limite = 40) {
       const a = await adaptador();
       const lista = await a.videos(await conta._entidade(conversaId), limite);
       const pasta = path.join(pastaCache, 'miniaturas');
@@ -266,7 +267,7 @@ function criarContaTelegram({ arquivo, pastaCache, cifrar, decifrar, criarAdapta
       const a = await adaptador();
       const ent = await conta._entidade(conversaId);
       const info = await a.video(ent, Number(msgId));
-      if (!info) throw new Error('Esse vídeo não está mais na conversa.');
+      if (!info) throw new Error('Isso não está mais na conversa.');
       const pasta = path.join(pastaCache, 'baixando', `${conversaId}_${msgId}`);
       fs.rmSync(pasta, { recursive: true, force: true });
       fs.mkdirSync(pasta, { recursive: true });
@@ -324,16 +325,31 @@ function criarAdaptadorGram({ apiId, apiHash, sessao }) {
     baseLogger: new Logger('none'),
   });
 
-  const tituloDe = m => {
+  const tituloDe = (m, oQue = 'Vídeo') => {
     const doc = m.media && m.media.document;
     const nomeArq = doc && (doc.attributes || []).find(x => x.className === 'DocumentAttributeFilename');
     const legenda = String(m.message || '').split('\n').map(s => s.trim()).find(Boolean);
     if (legenda) return legenda.slice(0, 90);
     if (nomeArq && nomeArq.fileName) return nomeArq.fileName.replace(/\.[^.]+$/, '');
     const d = new Date(m.date * 1000);
-    return `Vídeo de ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    return `${oQue} de ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  };
+  // Os tamanhos de verdade de uma foto (sem os borrões minúsculos que vêm junto), do menor para o maior.
+  const tamanhosDaFoto = m => {
+    const foto = m && m.media && !m.media.ttlSeconds && m.media.photo;
+    if (!foto || !foto.sizes) return [];
+    return foto.sizes.filter(t => t.className === 'PhotoSize' || t.className === 'PhotoSizeProgressive')
+      .sort((a, b) => (a.w || 0) * (a.h || 0) - (b.w || 0) * (b.h || 0));
   };
   const infoDe = m => {
+    const tams = tamanhosDaFoto(m);
+    if (tams.length) {
+      const maior = tams[tams.length - 1];
+      return {
+        id: m.id, tipo: 'foto', titulo: tituloDe(m, 'Foto'), duracao: 0, tamanho: Number(maior.size || (maior.sizes ? Math.max(...maior.sizes) : 0) || 0),
+        quando: m.date * 1000, vertical: (maior.h || 0) > (maior.w || 0), ext: 'jpg', temCapa: true,
+      };
+    }
     const doc = m.media && m.media.document;
     if (!doc) return null;
     const vid = (doc.attributes || []).find(x => x.className === 'DocumentAttributeVideo');
@@ -341,11 +357,11 @@ function criarAdaptadorGram({ apiId, apiHash, sessao }) {
     const mime = String(doc.mimeType || '');
     const ext = /webm/.test(mime) ? 'webm' : /quicktime/.test(mime) ? 'mov' : /matroska/.test(mime) ? 'mkv' : 'mp4';
     return {
-      id: m.id, titulo: tituloDe(m), duracao: Math.round(vid.duration || 0), tamanho: Number(doc.size || 0),
+      id: m.id, tipo: 'video', titulo: tituloDe(m), duracao: Math.round(vid.duration || 0), tamanho: Number(doc.size || 0),
       quando: m.date * 1000, vertical: (vid.h || 0) > (vid.w || 0), ext, temCapa: !!(doc.thumbs && doc.thumbs.length),
     };
   };
-  const filtro = () => new Api.InputMessagesFilterVideo();
+  const filtro = () => new Api.InputMessagesFilterPhotoVideo();
 
   return {
     conectar: () => client.connect(),
@@ -396,6 +412,9 @@ function criarAdaptadorGram({ apiId, apiHash, sessao }) {
     },
     async miniatura(ent, id) {
       const [m] = await client.getMessages(ent, { ids: [id] });
+      // Foto: o menor tamanho que ainda fica nítido na lista do celular.
+      const tams = tamanhosDaFoto(m);
+      if (tams.length) return client.downloadMedia(m, { thumb: (tams.find(t => (t.w || 0) >= 300) || tams[tams.length - 1]).type });
       const doc = m && m.media && m.media.document;
       if (!doc || !doc.thumbs || !doc.thumbs.length) return null;
       // A maior miniatura de verdade (a primeira costuma ser um borrão minúsculo).
@@ -408,7 +427,15 @@ function criarAdaptadorGram({ apiId, apiHash, sessao }) {
     // resposta; com os servidores do Telegram longe do Brasil, isso deixava o vídeo muito lento.
     async baixar(ent, id, arquivo, aoProgresso) {
       const [m] = await client.getMessages(ent, { ids: [id] });
-      if (!m || !m.media) throw new Error('Esse vídeo não está mais na conversa.');
+      if (!m || !m.media) throw new Error('Isso não está mais na conversa.');
+      // Foto é pequena: vem inteira de uma vez, no maior tamanho.
+      if (tamanhosDaFoto(m).length) {
+        const foto = await client.downloadMedia(m, {});
+        if (!foto || !foto.length) throw new Error('A foto não baixou. Tente de novo.');
+        fs.writeFileSync(arquivo, foto);
+        aoProgresso(foto.length, foto.length);
+        return;
+      }
       const { utils } = require('telegram');
       const { FileMigrateError } = require('telegram/errors');
       const info = utils.getFileInfo(m.media);

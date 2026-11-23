@@ -12,8 +12,8 @@ android {
         // 34 de propósito: a partir do 35 o Android desenha o app por baixo das barras do sistema,
         // e a página do controle (servida pelo notebook) não foi feita para isso.
         targetSdk 34
-        versionCode 3
-        versionName '1.1.4'
+        versionCode 4
+        versionName '1.1.5'
     }
 
     buildTypes {

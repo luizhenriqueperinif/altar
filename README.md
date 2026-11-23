@@ -28,7 +28,8 @@ Antes, conduzir uma reunião exigia alguém no computador abrindo arquivos, troc
 - **Bíblia embutida (ACF, ARC e NVI):** passagens preparadas antes e **versículo avulso** escolhido na hora, com fundos de imagem
 - **Controle pelo celular sem instalar app:** funciona em Android e iPhone pelo navegador, pela rede Wi-Fi local, sem depender de internet
 - **Envio de arquivos pelo celular** direto para a Biblioteca do notebook
-- **Vídeos do Telegram:** o pastor escolhe a conversa e o vídeo pelo celular e o programa baixa no notebook
+- **Fotos e vídeos do Telegram:** o celular mostra as conversas como no Telegram (pessoas, grupos e canais); o pastor abre uma, toca na foto ou no vídeo e o programa baixa no notebook
+- **Janela do notebook na TV** (YouTube, Telegram...): o celular toca, pausa, adianta e mexe no volume só daquele programa
 - **Controles de culto:** apagar a TV, volume, tela de espera com a logo da igreja e encerrar
 - **Instalador para Windows** que já libera o programa no firewall e abre sozinho quando o notebook liga
 - **Acesso protegido:** só quem leu o QR code (que leva uma chave aleatória) consegue controlar a TV
@@ -102,7 +103,7 @@ Para ensaiar pelo código, sem instalar nada: `ALTAR_TESTAR_ATUALIZACAO=1 npm st
 
 ## Aplicativo do celular (Android)
 
-O celular não precisa de aplicativo: o QR code do Painel abre o controle no navegador. O aplicativo (`android/`) é o mesmo controle em tela cheia, com quatro confortos: guarda o endereço do notebook (o QR code é lido uma vez só), procura o notebook sozinho se o roteador trocar o endereço dele, não deixa a tela do celular apagar durante a reunião e mostra as últimas fotos e vídeos do celular em **Colocar outra coisa na reunião**, para marcar e mandar sem abrir a galeria. As telas continuam vindo do notebook, então atualizar o programa do notebook não exige atualizar o aplicativo (só as novidades que dependem do celular, como essa das fotos, pedem o aplicativo novo).
+O celular não precisa de aplicativo: o QR code do Painel abre o controle no navegador. O aplicativo (`android/`) é o mesmo controle em tela cheia, com quatro confortos: guarda o endereço do notebook (o QR code é lido uma vez só; **Desconectar deste notebook**, na tela inicial, esquece o endereço para ler outro QR code), procura o notebook sozinho se o roteador trocar o endereço dele, não deixa a tela do celular apagar durante a reunião e mostra as últimas fotos e vídeos do celular em **Colocar outra coisa na reunião**, para marcar e mandar sem abrir a galeria. As telas continuam vindo do notebook, então atualizar o programa do notebook não exige atualizar o aplicativo (só as novidades que dependem do celular, como essa das fotos, pedem o aplicativo novo).
 
 Para mostrar as últimas fotos e vídeos, o aplicativo pede a permissão do Android para ver as fotos do celular, só quando a pessoa toca no botão. O navegador não consegue fazer isso (uma página não pode listar a galeria), então ali fica só o botão **Neste celular**. As fotos marcadas vão direto do aplicativo para o notebook pareado, pela rede local.
 
