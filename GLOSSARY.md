@@ -21,7 +21,7 @@ Quem prepara uma Reunião no Notebook e a conduz pelo Controle. Vários pastores
 _Avoid_: Usuário, apresentador, operador
 
 **Pregação**:
-Um Item formado por um conjunto de imagens em ordem, recebidas prontas do bispo, que o Pastor vai passando.
+Um Item formado por um conjunto de imagens em ordem, que o Pastor vai passando. As imagens chegam prontas do bispo, saem das páginas de um PDF ou PowerPoint, ou são juntadas pelo Pastor a partir de imagens da Biblioteca; a ordem pode ser mudada depois.
 _Avoid_: Apresentação, PowerPoint, slides
 
 **Música**:

@@ -7,7 +7,8 @@ const { Dados, EXT_IMAGEM, EXT_VIDEO, EXT_AUDIO, tipoDoArquivo } = require('./da
 const { criarServidor } = require('./servidor');
 const { criarTeclas } = require('./teclas');
 const { criarLeitorPdf } = require('./pdf');
-const { criarPregacoes, resumoDasPregacoes, ehPdf } = require('./pregacoes');
+const { criarLeitorPowerPoint } = require('./powerpoint');
+const { criarPregacoes, resumoDasPregacoes, ehPalestra, EXT_POWERPOINT } = require('./pregacoes');
 const { letraValida } = require('./partes');
 const { criarAtualizacao } = require('./atualizacao');
 const tg = require('./telegram');
@@ -166,7 +167,9 @@ const leitorPdf = criarLeitorPdf({ urlDaPagina: () => urlLocal('pdf') });
 const CAMINHO_APK = app.isPackaged
   ? path.join(process.resourcesPath, 'Altar.apk')
   : path.join(__dirname, '..', '..', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
-const opcoesPdf = { pdfParaImagens: leitorPdf.paraImagens, aoErrar: e => anotarErro('PDF', e) };
+// PowerPoint: quem desenha os slides é o PowerPoint do notebook (ou o LibreOffice, que passa pelo leitor de PDF).
+const leitorPowerPoint = criarLeitorPowerPoint({ pdfParaImagens: leitorPdf.paraImagens });
+const opcoesPdf = { pdfParaImagens: leitorPdf.paraImagens, pptParaImagens: leitorPowerPoint.paraImagens, aoErrar: e => anotarErro('PDF', e) };
 
 /** Copia os arquivos para a Biblioteca e, se veio uma reunião, coloca no fim dela. */
 // comoFundo: true = fundo de versículo; 'espera' = vídeos e imagens para a Tela de espera.
@@ -178,14 +181,14 @@ async function importar(caminhos, reuniaoId, comoFundo) {
     servidor.transmitir();
     return { qtd: r.novos.length, repetidos: r.repetidos.length, ignorados: r.ignorados + caminhos.length - servem.length, naReuniao: false };
   }
-  // Um PDF no meio dos arquivos vira uma pregação (uma imagem por página). Como fundo não serve.
-  const pdfs = comoFundo ? [] : caminhos.filter(ehPdf);
+  // Um PDF ou PowerPoint no meio dos arquivos vira uma pregação (uma imagem por página). Como fundo não serve.
+  const pdfs = comoFundo ? [] : caminhos.filter(ehPalestra);
   const palestras = resumoDasPregacoes(await criarPregacoes(dados, pdfs, opcoesPdf));
   const { novos, repetidos, ignorados } = dados.importarArquivos(caminhos.filter(c => !pdfs.includes(c)), { comoFundo: !!comoFundo });
   // Os repetidos não são copiados de novo, mas entram na reunião (se ela ainda não tiver).
   if (reuniaoId && !comoFundo) dados.adicionarItens(reuniaoId, [...novos, ...repetidos].map(b => b.id).concat(palestras.ids), { semRepetir: true });
   servidor.transmitir();
-  return { qtd: novos.length + palestras.novas, repetidos: repetidos.length + palestras.qtd - palestras.novas, ignorados: ignorados + palestras.ignorados, naReuniao: !!reuniaoId && !comoFundo };
+  return { qtd: novos.length + palestras.novas, repetidos: repetidos.length + palestras.qtd - palestras.novas, ignorados: ignorados + palestras.ignorados, naReuniao: !!reuniaoId && !comoFundo, semPowerPoint: palestras.semPowerPoint };
 }
 
 ipcMain.handle('importar-dialogo', async (_e, { reuniaoId, comoFundo } = {}) => {
@@ -193,7 +196,7 @@ ipcMain.handle('importar-dialogo', async (_e, { reuniaoId, comoFundo } = {}) => 
     ? { title: 'Escolha os vídeos e imagens da Tela de espera', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Vídeos e imagens', extensions: [...EXT_VIDEO, ...EXT_IMAGEM] }] }
     : comoFundo
     ? { title: 'Escolha as imagens de fundo', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Imagens', extensions: EXT_IMAGEM }] }
-    : { title: 'Escolha as fotos, vídeos, músicas ou o PDF da palestra', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Fotos, vídeos, músicas e PDF', extensions: [...EXT_IMAGEM, ...EXT_VIDEO, ...EXT_AUDIO, 'pdf'] }] });
+    : { title: 'Escolha as fotos, vídeos, músicas ou a palestra (PDF ou PowerPoint)', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Fotos, vídeos, músicas, PDF e PowerPoint', extensions: [...EXT_IMAGEM, ...EXT_VIDEO, ...EXT_AUDIO, 'pdf', ...EXT_POWERPOINT] }] });
   if (r.canceled || r.filePaths.length === 0) return null;
   return importar(r.filePaths, reuniaoId, comoFundo);
 });
@@ -202,9 +205,9 @@ ipcMain.handle('importar-dialogo', async (_e, { reuniaoId, comoFundo } = {}) => 
 ipcMain.handle('importar-pregacao', async (_e, { reuniaoId, caminhos } = {}) => {
   if (!Array.isArray(caminhos)) {
     const r = await dialog.showOpenDialog(painel, {
-      title: 'Escolha o PDF da palestra, ou TODAS as imagens da pregação (segure Ctrl para marcar várias)',
+      title: 'Escolha o PDF ou o PowerPoint da palestra, ou TODAS as imagens da pregação (segure Ctrl para marcar várias)',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'PDF ou imagens', extensions: ['pdf', ...EXT_IMAGEM] }],
+      filters: [{ name: 'PDF, PowerPoint ou imagens', extensions: ['pdf', ...EXT_POWERPOINT, ...EXT_IMAGEM] }],
     });
     if (r.canceled || r.filePaths.length === 0) return null;
     caminhos = r.filePaths;
@@ -214,6 +217,20 @@ ipcMain.handle('importar-pregacao', async (_e, { reuniaoId, caminhos } = {}) => 
   if (reuniaoId) dados.adicionarItens(reuniaoId, r.ids, { semRepetir: true });
   servidor.transmitir();
   return r;
+});
+
+/** Mais imagens do computador para uma pregação que já existe: entram no fim dela. */
+ipcMain.handle('pregacao-mais-imagens', async (_e, { id } = {}) => {
+  const r = await dialog.showOpenDialog(painel, {
+    title: 'Escolha as imagens que vão entrar no fim da pregação (segure Ctrl para marcar várias)',
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Imagens', extensions: EXT_IMAGEM }],
+  });
+  if (r.canceled || r.filePaths.length === 0) return null;
+  const ordenadas = r.filePaths.slice().sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'pt-BR', { numeric: true }));
+  const qtd = dados.colocarArquivosNaPregacao(id, ordenadas);
+  servidor.transmitir();
+  return { qtd };
 });
 
 ipcMain.handle('importar-caminhos', (_e, { caminhos, reuniaoId, comoFundo } = {}) => {

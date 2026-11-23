@@ -21,6 +21,10 @@
     verso: null,                // janela "+ Versículo": { etapa, test, l, c, de, sel, versao }
     fundo: false,               // janela "Fundo dos versículos"
     previaTestar: null,         // texto do versículo no "Testar"
+    bibSel: new Set(),          // arquivos marcados na Biblioteca (na ordem em que foram marcados)
+    paraReuniao: false,         // janela "Em qual reunião?" (colocar os marcados da Biblioteca)
+    pregacao: null,             // id da pregação com as imagens abertas para mudar a ordem
+    tg: null,                   // janela do Telegram: { ligada, conversas, conversa, midias, baixando, aviso }
   };
   const ULTIMO_DO_AT = 38;
   const indices = {};
@@ -43,6 +47,7 @@
       if (m.tipo === 'estado') receber(m);
       else if (m.tipo === 'resposta') { esperando.get(m.pedido)?.(m.resposta); esperando.delete(m.pedido); }
       else if (m.tipo === 'erro') avisar(m.mensagem);
+      else if (/^tg[A-Z]/.test(m.tipo)) receberTelegram(m);
     },
     aoMudar: () => {},
   });
@@ -59,6 +64,8 @@
     if (chave === chaveDados) return;
     chaveDados = chave;
     if (S.aberta && !M.reunioesCompletas.some(r => r.id === S.aberta)) S.aberta = null;
+    for (const bid of [...S.bibSel]) if (!M.biblioteca.some(b => b.id === bid)) S.bibSel.delete(bid);
+    if (S.pregacao && !M.biblioteca.some(b => b.id === S.pregacao)) S.pregacao = null;
     desenhar();
   }
 
@@ -128,7 +135,13 @@
     else if (S.aba === 'biblioteca') html = biblioteca();
     else if (S.aba === 'config') html = configuracoes();
     $('conteudo').innerHTML = html;
-    $('modal').innerHTML = S.musicaEspera ? janelaMusicaEspera() : S.espera ? janelaEspera() : S.janelas ? escolherJanela() : S.escolher ? janelaEscolher() : S.testar != null ? janelaTestar() : S.verso ? janelaVerso() : S.fundo ? janelaFundo() : '';
+    // Nas janelas que redesenham a cada clique (imagens da pregação, Telegram) a lista não pula para o começo.
+    const qualJanela = () => (S.pregacao ? 'pregacao:' + S.pregacao : S.tg ? 'tg:' + (S.tg.conversa ? S.tg.conversa.id : '') : '');
+    const corpoAntes = document.querySelector('#modal .janela > .corpo');
+    const rolagem = corpoAntes && corpoAntes.dataset.janela === qualJanela() ? corpoAntes.scrollTop : 0;
+    $('modal').innerHTML = S.pregacao ? janelaPregacao() : S.tg ? janelaTelegram() : S.paraReuniao ? janelaParaReuniao() : S.musicaEspera ? janelaMusicaEspera() : S.espera ? janelaEspera() : S.janelas ? escolherJanela() : S.escolher ? janelaEscolher() : S.testar != null ? janelaTestar() : S.verso ? janelaVerso() : S.fundo ? janelaFundo() : '';
+    const corpoAgora = document.querySelector('#modal .janela > .corpo');
+    if (corpoAgora && qualJanela()) { corpoAgora.dataset.janela = qualJanela(); corpoAgora.scrollTop = rolagem; }
     window.Versiculo.ajustar(document.body);
     const v = document.querySelector('#modal video'); if (v) v.volume = 0.5;
   }
@@ -243,6 +256,7 @@
           : it.tipo === 'pregacao' ? `Pregação · ${it.arquivos.length} ${it.arquivos.length === 1 ? 'imagem' : 'imagens'} · no celular passa com as setas`
           : TIPO[it.tipo] || it.tipo}${naTv === it.id ? ' · <span class="ao-vivo">na TV agora</span>' : ''}</div></div>
         <div class="acoes">
+          ${it.tipo === 'pregacao' ? `<button class="btn" data-a="editarPregacao" data-v="${it.bibliotecaId}" aria-label="Mudar as imagens da pregação" title="Mudar a ordem das imagens desta pregação">${I('editar')}</button>` : ''}
           <button class="btn" data-a="mover" data-v="${it.id}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Subir">${I('subir')}</button>
           <button class="btn" data-a="mover" data-v="${it.id}" data-d="1" ${i === r.itens.length - 1 ? 'disabled' : ''} aria-label="Descer">${I('descer')}</button>
           <button class="btn danger" data-a="tirar" data-v="${it.id}" aria-label="Tirar da reunião">${I('lixo')}</button>
@@ -272,10 +286,11 @@
         </div>
         <p class="note">Para mudar a ordem, arraste um item para cima ou para baixo, ou use as setas de subir e descer.</p>
         <div class="de-fora">
-          <div class="de-fora-tit">Ainda não está na Biblioteca? Traga do computador:</div>
+          <div class="de-fora-tit">Ainda não está na Biblioteca? Traga do computador ou do Telegram:</div>
           <div class="acoes">
             <button class="btn" data-a="importar">+ Fotos, vídeos e músicas</button>
-            <button class="btn" data-a="novaPregacao">${I('pregacao')} Pregação</button>
+            <button class="btn" data-a="novaPregacao">${I('pregacao')} Pregação (imagens, PDF ou PowerPoint)</button>
+            <button class="btn" data-a="abrirTelegram">${I('video')} Fotos e vídeos do Telegram</button>
           </div>
           <p class="note">Ou arraste os arquivos para esta janela. Eles vão para a Biblioteca e entram no fim da reunião, na ordem do WhatsApp.</p>
         </div>
@@ -300,6 +315,141 @@
       <button class="btn sm ${v === 'grade' ? 'sel' : ''}" data-a="visao" data-v="grade" title="Quadros grandes">${I('biblioteca')} Quadros</button>
       <button class="btn sm ${v === 'lista' ? 'sel' : ''}" data-a="visao" data-v="lista" title="Uma linha para cada">${I('linhas')} Linhas</button></div>`;
   }
+  // O que dá para marcar na Biblioteca (várias de uma vez) para colocar numa reunião ou juntar numa pregação.
+  const MARCAVEIS = ['video', 'imagem', 'pregacao', 'musica'];
+  const marcados = () => [...S.bibSel].map(bid => M.biblioteca.find(b => b.id === bid)).filter(Boolean);
+  const soImagens = lista => lista.length >= 2 && lista.every(b => b.tipo === 'imagem');
+  function barraMarcados() {
+    const l = marcados();
+    if (!l.length) return '';
+    const juntar = soImagens(l);
+    return `<div class="barra-marcados" role="region" aria-label="Arquivos marcados">
+      <b>${l.length} ${l.length === 1 ? 'marcado' : 'marcados'}</b>
+      <button class="btn primary" data-a="marcadosNaReuniao">${I('biblioteca')} Colocar numa reunião</button>
+      <button class="btn" data-a="marcadosJuntar" ${juntar ? '' : 'disabled'} title="As imagens marcadas viram uma pregação só, que passa com as setas">${I('pregacao')} Juntar numa pregação</button>
+      <button class="btn" data-a="marcadosLimpar">Desmarcar</button>
+      ${juntar ? '<span class="note">A pregação fica na ordem em que você marcou.</span>' : '<span class="note">Para juntar numa pregação, marque só imagens (duas ou mais).</span>'}</div>`;
+  }
+  /** Colocar os marcados da Biblioteca: em qual reunião? */
+  function janelaParaReuniao() {
+    const l = marcados();
+    const lista = M.reunioes.filter(r => r.data >= M.hoje);
+    return `<div class="fundo-modal"><div class="janela estreita" role="dialog" aria-label="Colocar numa reunião">
+      <header><h2>Em qual reunião?</h2><button class="btn sm" data-a="fecharModal">${I('fechar')} Fechar</button></header>
+      <div class="corpo">
+        <p class="note">${l.length} ${l.length === 1 ? 'arquivo entra' : 'arquivos entram'} no fim da reunião, na ordem em que você marcou.</p>
+        ${lista.length ? lista.map(r => `<button class="btn linha-reuniao" data-a="marcadosColocar" data-v="${r.id}">
+            <span><b>${esc(tituloReuniao(r))}</b><small>${esc(diaSemana(r.data))}, ${ddmm(r.data)} · ${esc(r.hora)}${M.estado.reuniaoId === r.id ? ' · acontecendo agora' : ''}</small></span>${I('dir')}</button>`).join('')
+          : '<div class="vazio">Nenhuma reunião de hoje em diante. Crie a reunião primeiro, em "Reuniões".</div>'}
+      </div><footer></footer></div></div>`;
+  }
+  /** As imagens de uma pregação: subir, descer, tirar e colocar mais. */
+  function janelaPregacao() {
+    const b = M.biblioteca.find(x => x.id === S.pregacao && x.tipo === 'pregacao');
+    if (!b) return '';
+    const n = b.arquivos.length;
+    return `<div class="fundo-modal"><div class="janela media" role="dialog" aria-label="Imagens da pregação">
+      <header><h2>${esc(b.titulo)}</h2><button class="btn sm" data-a="fecharModal">${I('fechar')} Fechar</button></header>
+      <div class="corpo">
+        <p class="note">Esta é a ordem em que as imagens passam na TV. O que mudar aqui vale para todas as reuniões que usam esta pregação.</p>
+        <div class="slides-lista">${b.arquivos.map((a, i) => `<div class="slide-linha">
+          <span class="num">${i + 1}</span><img src="${midia(a)}" alt="Imagem ${i + 1}" loading="lazy">
+          <div class="acoes">
+            <button class="btn" data-a="slideMover" data-v="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''}>${I('subir')} Subir</button>
+            <button class="btn" data-a="slideMover" data-v="${i}" data-d="1" ${i === n - 1 ? 'disabled' : ''}>${I('descer')} Descer</button>
+            <button class="btn danger" data-a="slideTirar" data-v="${i}" ${n < 2 ? 'disabled' : ''}>${I('lixo')} Tirar</button>
+          </div></div>`).join('')}</div>
+      </div>
+      <footer><span class="note">${n} ${n === 1 ? 'imagem' : 'imagens'}</span>
+        <button class="btn" data-a="slideMais">${I('mais')} Colocar mais imagens</button></footer>
+    </div></div>`;
+  }
+
+  // ---------- Telegram pelo notebook: conversas (como no Telegram) → fotos e vídeos → Biblioteca (e reunião aberta) ----------
+  const TIPO_CONV = { grupo: 'Grupo', canal: 'Canal' };
+  const COR_CONV = ['#2b3858', '#1c6b46', '#8a4b14', '#6b2a5a', '#305a73', '#7a2a2f'];
+  const iniciais = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+  const tgQuando = ms => {
+    const d = new Date(ms), hoje = new Date();
+    const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1);
+    if (d.toDateString() === hoje.toDateString()) return 'Hoje, ' + hora;
+    if (d.toDateString() === ontem.toDateString()) return 'Ontem, ' + hora;
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ', ' + hora;
+  };
+  const tgDuracao = seg => { seg = Math.round(seg || 0); const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), x = String(seg % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+  const tgTamanho = b => (b >= 1024 * 1024 * 1024 ? (b / 1024 / 1024 / 1024).toFixed(1).replace('.', ',') + ' GB' : Math.max(1, Math.round(b / 1024 / 1024)) + ' MB');
+  /** A reunião que está sendo preparada (o que vem do Telegram entra nela); fora de uma reunião, só Biblioteca. */
+  const destinoTg = () => (S.aba === 'reunioes' && S.aberta) || null;
+
+  function janelaTelegram() {
+    const tg = S.tg, t = encodeURIComponent(conexao.token);
+    const erro = tg.aviso ? `<div class="aviso-erro">${I('alerta')} <span>${esc(tg.aviso)}</span></div>` : '';
+    let titulo = 'Fotos e vídeos do Telegram', voltar = '', corpo, rodape = '';
+    if (tg.ligada === false) {
+      corpo = `<div class="vazio"><div class="grande">${I('video')}</div><div>O Telegram ainda não está ligado neste notebook.</div>
+        <div><button class="btn primary" data-a="tgIrConfig">Ligar o Telegram (em Configurações)</button></div></div>`;
+    } else if (!tg.conversa) {
+      const l = tg.conversas;
+      corpo = !l ? '<p class="note">Buscando as conversas do Telegram… Pode levar alguns segundos.</p>'
+        : !l.length ? `${erro}<p class="note">Nenhuma conversa recente tem foto ou vídeo.</p>`
+        : `${erro}<p class="note">Escolha a conversa.</p>
+          <div class="tg-conversas">${l.map((c, i) => `<button class="tg-conversa" data-a="tgAbrir" data-v="${i}">
+            <span class="tg-av" style="background:${COR_CONV[i % COR_CONV.length]}">${esc(iniciais(c.nome))}</span>
+            <span class="tg-info"><b>${esc(c.nome)}</b><small>${TIPO_CONV[c.tipo] ? TIPO_CONV[c.tipo] + ' · ' : ''}${tgQuando(c.quando)}</small></span>
+            <span class="tg-qt">${c.qt >= 100 ? '99+' : c.qt} ${c.qt === 1 ? 'mídia' : 'mídias'}</span></button>`).join('')}</div>`;
+      rodape = l ? `<button class="btn sm" data-a="tgAtualizar">${I('procurar')} Procurar de novo</button>` : '';
+    } else {
+      const l = tg.midias, ocupado = !!tg.baixando;
+      titulo = tg.conversa.nome;
+      voltar = `<button class="btn sm" data-a="tgConversas">${I('esq')} Conversas</button>`;
+      corpo = !l ? '<p class="note">Buscando as fotos e os vídeos da conversa…</p>'
+        : !l.length ? `${erro}<p class="note">Essa conversa não tem fotos nem vídeos.</p>`
+        : `${erro}<p class="note">Clique na foto ou no vídeo: ele é baixado para a Biblioteca${destinoTg() ? ' e entra no fim desta reunião' : ''}.</p>
+          <div class="grade">${l.map(v => {
+            const baixando = ocupado && tg.baixando.msg === v.id;
+            const estado = baixando ? `<div class="bar"><i data-tg-pct style="width:${tg.baixando.pct}%"></i></div><div class="d">Baixando…</div>`
+              : v.naReuniao ? `<div class="d tg-ja">${I('ok')} Já está nesta reunião</div>`
+              : v.jaBaixado ? `<div class="d tg-ja">${I('ok')} Já está na Biblioteca${destinoTg() ? ' (clique para colocar na reunião)' : ''}</div>` : '';
+            return `<button class="arq escolher tg-midia" data-a="tgBaixar" data-v="${v.id}" ${ocupado || v.naReuniao || (v.jaBaixado && !destinoTg()) ? 'disabled' : ''}>
+              <div class="miniatura">${I(v.tipo === 'foto' ? 'imagem' : 'video')}<img src="/tg-mini/${encodeURIComponent(tg.conversa.id)}/${v.id}?t=${t}" alt="" loading="lazy" onerror="this.remove()">${v.tipo === 'foto' ? '' : `<span class="qtd">${tgDuracao(v.duracao)}</span>`}</div>
+              <div class="info"><div class="t">${esc(v.titulo)}</div>
+                <div class="d">${v.tipo === 'foto' ? 'Foto' : 'Vídeo'} · ${tgQuando(v.quando)}${v.tipo === 'foto' ? '' : ' · ' + tgTamanho(v.tamanho)}</div>${estado}</div></button>`;
+          }).join('')}</div>`;
+    }
+    return `<div class="fundo-modal"><div class="janela" role="dialog" aria-label="Fotos e vídeos do Telegram">
+      <header><div class="acoes">${voltar}<h2>${esc(titulo)}</h2></div><button class="btn sm" data-a="fecharModal">${I('fechar')} Fechar</button></header>
+      <div class="corpo">${corpo}</div><footer>${rodape}</footer></div></div>`;
+  }
+
+  function receberTelegram(m) {
+    const tg = S.tg;
+    if (!tg) {
+      // A janela foi fechada no meio: o arquivo termina de baixar do mesmo jeito.
+      if (m.tipo === 'tgPronto') avisar('O arquivo do Telegram terminou de baixar e está na Biblioteca.');
+      return;
+    }
+    if (m.tipo === 'tgConversas') { tg.ligada = !!m.ligada; tg.conversas = m.lista || []; }
+    else if (m.tipo === 'tgVideos') { if (!tg.conversa || tg.conversa.id !== m.conversa) return; tg.midias = m.lista || []; }
+    else if (m.tipo === 'tgProgresso') {
+      if (!tg.baixando || tg.baixando.msg !== m.msg) return;
+      tg.baixando.pct = m.pct;
+      const barra = document.querySelector('#modal [data-tg-pct]');
+      if (barra) { barra.style.width = m.pct + '%'; return; }
+    } else if (m.tipo === 'tgPronto') {
+      const titulo = tg.baixando ? tg.baixando.titulo : 'O arquivo';
+      tg.baixando = null;
+      avisar(m.naReuniao ? `"${titulo}" está na Biblioteca e entrou na reunião.` : `"${titulo}" está na Biblioteca.`);
+      if (tg.conversa) enviar({ cmd: 'pedirTgVideos', conversa: tg.conversa.id, reuniaoId: destinoTg() });
+    } else if (m.tipo === 'tgErro') {
+      tg.baixando = null;
+      tg.aviso = m.mensagem || 'Não deu certo. Tente de novo.';
+      if (!tg.conversas) tg.conversas = [];
+      if (tg.conversa && !tg.midias) tg.midias = [];
+    } else return;
+    desenhar();
+  }
+
   function cartaoArquivo(b, modo) {
     const marcado = modo === 'escolher' && S.escolher.sel.has(b.id);
     const thumb = miniatura(b);
@@ -311,13 +461,14 @@
       ? `<form data-renomear="${b.id}"><input type="text" id="renomear-${b.id}" value="${esc(b.titulo)}" maxlength="80"></form>`
       : `<div class="t">${esc(b.titulo)}</div>`;
     const antigo = M.antigos.includes(b.id);
-    return `<div class="arq">${thumb}
+    const marcavel = MARCAVEIS.includes(b.tipo), marcada = marcavel && S.bibSel.has(b.id);
+    return `<div class="arq ${marcada ? 'marcado' : ''}">${thumb}
       <div class="info">${nome}${b.tipo === 'musica' && (M.categorias || []).length ? `<label class="cat-escolha"><span>Categoria</span>
           <select data-categoria="${b.id}"><option value="">Sem categoria</option>${M.categorias.map(c => `<option value="${c.id}" ${b.categoria === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>` : ''}<div class="d">${b.arquivos ? `${b.arquivos.length} imagens · ` : ''}Adicionado em ${ddmm(b.criadoEm)} · ${b.usos ? `em ${b.usos} ${b.usos === 1 ? 'reunião' : 'reuniões'}` : 'não está em reunião'}${antigo ? ' · antigo' : ''}</div></div>
       <div class="acoes">
         ${S.renomear === b.id
           ? `<button class="btn primary" data-a="salvarNome" data-v="${b.id}">Salvar</button><button class="btn" data-a="cancelarNome">Cancelar</button>`
-          : `${b.tipo === 'video' || b.tipo === 'imagem' ? `<button class="btn ${b.espera ? 'na-espera' : ''}" data-a="marcarEspera" data-v="${b.id}" title="Aparece na escolha da Tela de espera das reuniões">${I(b.espera ? 'ok' : 'tv')} ${b.espera ? 'Na espera' : 'Usar na espera'}</button>` : ''}<button class="btn" data-a="renomear" data-v="${b.id}">${I('editar')} Nome</button><button class="btn danger" data-a="apagarArquivo" data-v="${b.id}">${I('lixo')} Apagar</button>`}
+          : `${marcavel ? `<button class="btn ${marcada ? 'marcada' : ''}" data-a="bibMarcar" data-v="${b.id}" aria-pressed="${marcada}" title="Marque várias para colocar na reunião de uma vez${b.tipo === 'imagem' ? ' ou juntar numa pregação' : ''}">${marcada ? I('ok') + ' Marcada' : 'Marcar'}</button>` : ''}${b.tipo === 'pregacao' ? `<button class="btn" data-a="editarPregacao" data-v="${b.id}" title="Mudar a ordem, tirar ou colocar imagens">${I('lista')} Imagens</button>` : ''}${b.tipo === 'video' || b.tipo === 'imagem' ? `<button class="btn ${b.espera ? 'na-espera' : ''}" data-a="marcarEspera" data-v="${b.id}" title="Aparece na escolha da Tela de espera das reuniões">${I(b.espera ? 'ok' : 'tv')} ${b.espera ? 'Na espera' : 'Usar na espera'}</button>` : ''}<button class="btn" data-a="renomear" data-v="${b.id}">${I('editar')} Nome</button><button class="btn danger" data-a="apagarArquivo" data-v="${b.id}">${I('lixo')} Apagar</button>`}
       </div></div>`;
   }
 
@@ -407,6 +558,7 @@
           ${S.bibAba === 'pregacao'
             ? `<button class="btn primary" data-a="novaPregacao">${I('mais')} Nova pregação</button>`
             : `<button class="btn primary" data-a="importar">${S.bibAba === 'espera' ? '+ Adicionar vídeo ou imagem' : S.bibAba === 'fundo' ? '+ Adicionar imagem de fundo' : S.bibAba === 'musica' ? '+ Adicionar músicas' : '+ Adicionar arquivos'}</button>`}
+          ${S.bibAba === 'video' || S.bibAba === 'imagem' ? `<button class="btn" data-a="abrirTelegram">${I('video')} Do Telegram</button>` : ''}
           <button class="btn danger" data-a="apagarAntigos" ${antigos ? '' : 'disabled'}>${I('lixo')} Apagar antigos (${antigos})</button>
         </div></div>
       <p class="note">"Apagar antigos" apaga fotos, vídeos e pregações que não foram usados nos últimos 7 dias e não estão em nenhuma reunião de hoje em diante. Músicas e fundos nunca são apagados por ele.</p>
@@ -414,7 +566,8 @@
       ${S.bibAba === 'musica' ? barraCategorias() : ''}
       ${S.bibAba === 'espera' ? '' : trocaVisao(S.bibAba)}
       ${S.bibAba === 'espera' ? abaEspera() : S.bibAba === 'fundo' ? abaFundos(lista) : lista.length ? porDia(lista, undefined, S.bibAba)
-        : `<div class="vazio"><div class="grande">${I(S.bibAba === 'fundo' ? 'fundo' : 'biblioteca')}</div><div>${S.bibAba === 'video' ? 'Nenhum vídeo ainda.' : S.bibAba === 'musica' ? 'Nenhuma música ainda. Hinos, louvores e fundos de oração ficam guardados aqui para sempre.' : S.bibAba === 'pregacao' ? 'Nenhuma pregação ainda. Use "+ Nova pregação" e escolha o PDF da palestra ou todas as imagens que o bispo mandou.' : S.bibAba === 'fundo' ? 'Nenhum fundo próprio ainda. Os fundos que vêm no programa aparecem na hora de escolher o fundo da reunião.' : 'Nenhuma imagem ainda.'}</div></div>`}
+        : `<div class="vazio"><div class="grande">${I(S.bibAba === 'fundo' ? 'fundo' : 'biblioteca')}</div><div>${S.bibAba === 'video' ? 'Nenhum vídeo ainda.' : S.bibAba === 'musica' ? 'Nenhuma música ainda. Hinos, louvores e fundos de oração ficam guardados aqui para sempre.' : S.bibAba === 'pregacao' ? 'Nenhuma pregação ainda. Use "+ Nova pregação" e escolha o PDF ou o PowerPoint da palestra, ou todas as imagens que o bispo mandou.' : S.bibAba === 'fundo' ? 'Nenhum fundo próprio ainda. Os fundos que vêm no programa aparecem na hora de escolher o fundo da reunião.' : 'Nenhuma imagem ainda.'}</div></div>`}
+      ${barraMarcados()}
     </div>`;
   }
 
@@ -455,7 +608,10 @@
         ${lista.length ? porDia(lista, 'escolher', e.aba) : '<div class="vazio">Nada aqui ainda.</div>'}
         <p class="note">Toque nos arquivos para marcar. Eles entram no fim da reunião, na ordem em que foram marcados.</p></div>
       <footer><span class="note">${e.sel.size} marcado(s)</span>
-        <button class="btn primary" data-a="colocar" ${e.sel.size ? '' : 'disabled'}>Colocar na reunião</button></footer>
+        <div class="acoes">
+          ${soImagens([...e.sel].map(bid => M.biblioteca.find(b => b.id === bid)).filter(Boolean)) ? `<button class="btn" data-a="colocarJuntas" title="As imagens marcadas entram como uma pregação só, que passa com as setas">${I('pregacao')} Juntar numa pregação</button>` : ''}
+          <button class="btn primary" data-a="colocar" ${e.sel.size ? '' : 'disabled'}>Colocar na reunião${e.sel.size > 1 ? ' (separados)' : ''}</button>
+        </div></footer>
     </div></div>`;
   }
 
@@ -534,9 +690,10 @@
     let escolha;
     if (!livro) {
       const lista = idx.filter(b => v.test === 'NT' ? b.l > ULTIMO_DO_AT : b.l <= ULTIMO_DO_AT);
-      escolha = `<div class="sub-abas">
-          <button class="btn ${v.test !== 'NT' ? 'sel' : ''}" data-a="versoTest" data-v="AT">Antigo Testamento</button>
-          <button class="btn ${v.test === 'NT' ? 'sel' : ''}" data-a="versoTest" data-v="NT">Novo Testamento</button></div>
+      escolha = `<div class="sub-abas abas-test" role="group" aria-label="Testamento">
+          <button class="btn ${v.test !== 'NT' ? 'sel' : ''}" data-a="versoTest" data-v="AT" aria-pressed="${v.test !== 'NT'}">Antigo Testamento</button>
+          <button class="btn ${v.test === 'NT' ? 'sel' : ''}" data-a="versoTest" data-v="NT" aria-pressed="${v.test === 'NT'}">Novo Testamento</button></div>
+        <div class="eyebrow">Livros do ${v.test === 'NT' ? 'Novo' : 'Antigo'} Testamento</div>
         <div class="livros">${lista.map(b => `<button class="btn" data-a="versoLivro" data-v="${b.l}">${esc(b.nome)}</button>`).join('')}</div>`;
     } else if (v.c == null) {
       escolha = `<div class="nums">${livro.caps.map((_, i) => `<button class="btn" data-a="versoCap" data-v="${i + 1}">${i + 1}</button>`).join('')}</div>`;
@@ -926,19 +1083,20 @@
 
   // ---------- ações ----------
   let avisoTimer;
-  function avisar(texto) {
+  function avisar(texto, tempo = 4000) {
     const el = $('aviso');
     el.textContent = texto; el.hidden = false;
     clearTimeout(avisoTimer);
-    avisoTimer = setTimeout(() => { el.hidden = true; }, 4000);
+    avisoTimer = setTimeout(() => { el.hidden = true; }, tempo);
   }
   function avisarImportacao(r) {
     if (!r) return;
     let t = r.qtd ? `${r.qtd} ${r.qtd === 1 ? 'arquivo adicionado' : 'arquivos adicionados'}.` : r.repetidos ? '' : 'Nenhum arquivo adicionado.';
     if (r.repetidos) t += ` ${r.repetidos} ${r.repetidos === 1 ? 'já estava' : 'já estavam'} na Biblioteca e não ${r.repetidos === 1 ? 'foi copiado' : 'foram copiados'} de novo${r.naReuniao ? ` (mas ${r.repetidos === 1 ? 'entrou' : 'entraram'} na reunião)` : ''}.`;
     t = t.trim();
-    if (r.ignorados) t += ` ${r.ignorados} não ${r.ignorados === 1 ? 'é' : 'são'} foto, vídeo, música nem PDF e ${r.ignorados === 1 ? 'ficou' : 'ficaram'} de fora.`;
-    avisar(t);
+    if (r.semPowerPoint) t += ' Este notebook não tem o PowerPoint (nem o LibreOffice) para abrir a apresentação. Salve a apresentação como PDF e traga o PDF.';
+    else if (r.ignorados) t += ` ${r.ignorados} não ${r.ignorados === 1 ? 'é' : 'são'} foto, vídeo, música, PDF nem PowerPoint e ${r.ignorados === 1 ? 'ficou' : 'ficaram'} de fora.`;
+    avisar(t.trim(), r.semPowerPoint ? 12000 : undefined);
   }
   const reuniaoAberta = () => M.reunioesCompletas.find(x => x.id === S.aberta);
 
@@ -992,13 +1150,70 @@
     novaPregacao: async () => {
       const r = await window.notebook.importarPregacao(S.aba === 'reunioes' ? S.aberta : null);
       if (!r) return;
-      if (!r.qtd) { avisar('Não deu para criar a pregação. Ela precisa de imagens (fotos) ou de um PDF.'); return; }
+      if (!r.qtd) { avisar(r.semPowerPoint ? 'Este notebook não tem o PowerPoint (nem o LibreOffice) para abrir a apresentação. Salve a apresentação como PDF e traga o PDF.' : 'Não deu para criar a pregação. Ela precisa de imagens (fotos), de um PDF ou de um PowerPoint.', r.semPowerPoint ? 12000 : undefined); return; }
       avisar(r.repetida
         ? `Essa pregação já estava na Biblioteca ("${r.titulo}"). Não foi copiada de novo${S.aba === 'reunioes' && S.aberta ? ', mas está na reunião' : ''}.`
         : r.qtd > 1 ? `${r.qtd} pregações criadas, com ${r.imagens} imagens ao todo.`
         : `Pregação criada com ${r.imagens} imagens. Para mudar o nome, vá na Biblioteca.`);
     },
     daBiblioteca: () => { S.escolher = { aba: 'video', sel: new Set() }; },
+    colocarJuntas: async () => {
+      const ids = [...S.escolher.sel];
+      S.escolher = null;
+      const r = await pedir({ cmd: 'juntarEmPregacao', ids, reuniaoId: S.aberta });
+      avisar(r ? `Pregação com ${r.imagens} imagens colocada na reunião.${r.repetida ? ' Ela já existia na Biblioteca.' : ''}` : 'Não deu para juntar. Marque duas ou mais imagens.');
+      desenhar();
+    },
+    // Biblioteca: marcar várias e fazer algo com todas
+    bibMarcar: v => { S.bibSel.has(v) ? S.bibSel.delete(v) : S.bibSel.add(v); },
+    marcadosLimpar: () => { S.bibSel.clear(); },
+    marcadosNaReuniao: () => { S.paraReuniao = true; },
+    marcadosColocar: v => {
+      const ids = marcados().map(b => b.id);
+      if (!ids.length) return;
+      enviar({ cmd: 'adicionarItens', reuniaoId: v, bibliotecaIds: ids });
+      const r = M.reunioes.find(x => x.id === v);
+      avisar(`${ids.length} ${ids.length === 1 ? 'colocado' : 'colocados'} em "${r ? tituloReuniao(r) : 'reunião'}".`);
+      S.bibSel.clear(); S.paraReuniao = false;
+    },
+    marcadosJuntar: async () => {
+      const ids = marcados().map(b => b.id);
+      const r = await pedir({ cmd: 'juntarEmPregacao', ids });
+      if (!r) { avisar('Não deu para juntar. Marque duas ou mais imagens.'); desenhar(); return; }
+      S.bibSel.clear();
+      S.bibAba = 'pregacao';
+      S.pregacao = r.id;   // já abre as imagens, para acertar a ordem se precisar
+      avisar(r.repetida ? `Essa pregação já existia na Biblioteca ("${r.titulo}").` : `Pregação criada com ${r.imagens} imagens. Para mudar o nome, use "Nome".`);
+      desenhar();
+    },
+    // Imagens de uma pregação
+    editarPregacao: v => { S.pregacao = v; },
+    slideMover: (v, el) => enviar({ cmd: 'moverImagemDaPregacao', id: S.pregacao, n: Number(v), delta: Number(el.dataset.d) }),
+    slideTirar: v => {
+      if (confirm(`Tirar a imagem ${Number(v) + 1} desta pregação?`)) enviar({ cmd: 'tirarImagemDaPregacao', id: S.pregacao, n: Number(v) });
+    },
+    slideMais: async () => {
+      const r = await window.notebook.maisImagensNaPregacao(S.pregacao);
+      if (r) avisar(r.qtd ? `${r.qtd} ${r.qtd === 1 ? 'imagem entrou' : 'imagens entraram'} no fim da pregação.` : 'Nenhuma imagem entrou. A pregação só aceita imagens (fotos).');
+    },
+    // Telegram pelo notebook
+    abrirTelegram: () => { S.tg = { ligada: null, conversas: null, conversa: null, midias: null, baixando: null, aviso: '' }; enviar({ cmd: 'pedirTgConversas' }); },
+    tgAtualizar: () => { Object.assign(S.tg, { conversas: null, aviso: '' }); enviar({ cmd: 'pedirTgConversas', forcar: true }); },
+    tgConversas: () => { Object.assign(S.tg, { conversa: null, midias: null, aviso: '' }); },
+    tgAbrir: v => {
+      const c = (S.tg.conversas || [])[Number(v)];
+      if (!c) return;
+      Object.assign(S.tg, { conversa: c, midias: null, aviso: '' });
+      enviar({ cmd: 'pedirTgVideos', conversa: c.id, reuniaoId: destinoTg() });
+    },
+    tgBaixar: v => {
+      const tg = S.tg, m = (tg.midias || []).find(x => String(x.id) === v);
+      if (!m || tg.baixando) return;
+      tg.baixando = { msg: m.id, titulo: m.titulo, pct: 0 };
+      tg.aviso = '';
+      enviar({ cmd: 'baixarTg', conversa: tg.conversa.id, msg: m.id, reuniaoId: destinoTg() });
+    },
+    tgIrConfig: () => { S.tg = null; S.aba = 'config'; },
     escolherAba: v => { S.escolher.aba = v; },
     marcar: v => { const s = S.escolher.sel; s.has(v) ? s.delete(v) : s.add(v); },
     colocar: () => {
@@ -1006,7 +1221,7 @@
       avisar(`${S.escolher.sel.size} colocado(s) na reunião.`);
       S.escolher = null;
     },
-    fecharModal: () => { S.escolher = null; S.testar = null; S.verso = null; S.fundo = false; S.janelas = null; S.espera = false; S.musicaEspera = null; },
+    fecharModal: () => { S.escolher = null; S.testar = null; S.verso = null; S.fundo = false; S.janelas = null; S.espera = false; S.musicaEspera = null; S.paraReuniao = false; S.pregacao = null; S.tg = null; },
     abrirEspera: () => { S.espera = true; S.esperaMais = {}; },
     esperaMais: v => { S.esperaMais[v] = !S.esperaMais[v]; },
     marcarEspera: v => { const b = M.biblioteca.find(x => x.id === v); if (!b) return; b.espera = !b.espera; enviar({ cmd: 'marcarParaEspera', id: v, sim: b.espera }); },
@@ -1220,7 +1435,7 @@
   });
 
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && (S.escolher || S.testar != null || S.verso || S.fundo)) { ACOES.fecharModal(); desenhar(); }
+    if (ev.key === 'Escape' && (S.escolher || S.testar != null || S.verso || S.fundo || S.paraReuniao || S.pregacao || S.tg)) { ACOES.fecharModal(); desenhar(); }
     if (ev.key === 'Escape' && S.renomear) { S.renomear = null; desenhar(); }
     if (S.testar != null && (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft')) {
       const r = reuniaoAberta();
@@ -1299,7 +1514,7 @@
     if (!destino && S.aba !== 'biblioteca') { S.aba = 'biblioteca'; desenhar(); }
     if (S.aba === 'biblioteca' && S.bibAba === 'pregacao') {
       const r = await window.notebook.importarPregacaoArquivos(ev.dataTransfer.files);
-      avisar(r && r.qtd ? `Pregação criada com ${r.imagens} imagens.` : 'Para criar uma pregação, solte imagens (fotos) ou o PDF da palestra.');
+      avisar(r && r.qtd ? `Pregação criada com ${r.imagens} imagens.` : r && r.semPowerPoint ? 'Este notebook não tem o PowerPoint (nem o LibreOffice) para abrir a apresentação. Salve a apresentação como PDF e traga o PDF.' : 'Para criar uma pregação, solte imagens (fotos), o PDF ou o PowerPoint da palestra.', r && r.semPowerPoint ? 12000 : undefined);
       return;
     }
     const comoFundo = S.aba === 'biblioteca' && S.bibAba === 'espera' ? 'espera' : (S.aba === 'biblioteca' && S.bibAba === 'fundo') || S.fundo;

@@ -19,6 +19,12 @@
   let escolhendoMusica = false; // lista de músicas para tocar avulsa
   let envio = null;            // mandar arquivos do celular para a Biblioteca: { status, atual, total, pct, resultado, modo }
   let colocando = false;       // "Colocar na reunião": a pergunta "onde está?" (no notebook ou neste celular)
+  let arrumando = false;       // reunião: mudando a ordem dos itens ou tirando algum
+  let tirandoItem = null;      // o item que espera o "Sim, tirar"
+  let arrasto = null;          // item da reunião sendo arrastado para outro lugar da lista
+  let dono = null;             // de quem é este celular: { id, nome } | { nao: true } (não quis dizer) | null (ainda não perguntou)
+  let perguntandoDono = null;  // janela "De quem é este celular?": { nome }
+  let perguntouDono = false;   // a pergunta abre sozinha uma vez só
   let recentes = null;         // últimas fotos e vídeos do celular, embaixo dessa pergunta (só no aplicativo): { status, itens, sel }
   let escolhendoBib = null;    // colocar da Biblioteca na reunião: { aba, sel: [ids na ordem marcada] }
   let novaReuniao = null;      // criando reunião pelo celular: { pastorId, nome }
@@ -37,6 +43,7 @@
     local,
     aoReceber: m => {
       if (m.tipo === 'estado') { dados = m; desenhar(); }
+      else if (m.tipo === 'pastorGuardado') { if (dono && dono.nome && mesmoNome(dono.nome, m.nome)) guardarDono({ id: m.id, nome: m.nome }); desenhar(true); }
       else if (m.tipo === 'janelas' && escolhendoJanela) { escolhendoJanela.lista = m.lista || []; desenhar(true); }
       else if (m.tipo === 'telegram' && telegram && telegram.modo === 'pasta') { telegram.lista = m.lista || []; telegram.existe = m.existe; desenhar(true); }
       else if (m.tipo === 'tgConversas' && telegram) {
@@ -184,6 +191,25 @@
       ${naTv ? `<span class="estado${tocando ? ' som' : ''}">${chip}</span>` : ''}</button>`;
   }
 
+  // O mesmo cartão na hora de arrumar a reunião: não vai para a TV; o pastor arrasta pelas três barrinhas ou tira da reunião.
+  function cartaoArrumar(it, i) {
+    const e = dados.estado;
+    const naTv = (e.tv.tipo === 'item' && e.tv.itemId === it.id) || (it.tipo === 'musica' && e.audio && e.audio.itemId === it.id);
+    const foto = it.tipo === 'video' ? it.capa : (it.tipo === 'imagem' || it.tipo === 'pregacao') ? it.arquivo : null;
+    const icone = foto ? `<img src="${conexao.midia(foto)}" alt="" loading="lazy" draggable="false">` : ICONE[it.tipo] || '';
+    const confirma = tirandoItem !== it.id ? ''
+      : naTv ? `<div class="arr-confirma"><b>${it.tipo === 'musica' ? 'Está tocando agora. Pare a música antes de tirar.' : 'Está na TV agora. Mostre outra coisa antes de tirar.'}</b>
+          <button class="btn" data-acao="arrTirarNao">Entendi</button></div>`
+      : `<div class="arr-confirma"><b>Tirar da reunião?</b>
+          <button class="btn danger" data-acao="arrTirarSim" data-item="${it.id}">Sim, tirar</button>
+          <button class="btn" data-acao="arrTirarNao">Não</button></div>`;
+    return `<div class="card arrumar ${it.tipo} ${naTv ? 'on' : ''}" data-item="${it.id}">
+      <span class="arr-pega" role="img" aria-label="Arraste para mudar de lugar">${I('pega')}</span>
+      <span class="ic" aria-hidden="true">${icone}</span>
+      <span><span class="t">${esc(it.titulo)}</span>${naTv ? `<span class="d">${it.tipo === 'musica' ? 'tocando agora' : 'na TV agora'}</span>` : ''}</span>
+      <button class="btn arr-tirar" data-acao="arrTirar" data-item="${it.id}" aria-label="Tirar ${esc(it.titulo)} da reunião">${I('lixo')}</button>${confirma}</div>`;
+  }
+
   // ---------- telas ----------
   const diaSemana = d => { const [a, m, dd] = d.split('-').map(Number); return new Date(a, m - 1, dd).toLocaleDateString('pt-BR', { weekday: 'long' }); };
   const tituloReuniao = r => r.nome || `Reunião de ${diaSemana(r.data)}`;
@@ -236,6 +262,7 @@
       <button class="btn primary" data-acao="novaReuniao">${I('mais')} Criar reunião agora</button>
       ${dados.estado.tv.tipo === 'janela' ? '' : `<button class="btn" data-acao="abrirJanelas">${I('janela')} Mostrar uma janela do notebook</button>`}
       <button class="btn" data-acao="abrirEnvio">${I('enviar')} Mandar fotos, vídeos ou músicas para a Biblioteca</button>
+      <button class="btn" data-acao="donoAbrir">${I('pessoa')} ${nomeDoDono() ? `Este celular é de ${esc(nomeDoDono())} (trocar)` : 'Dizer de quem é este celular'}</button>
       ${cartaoApp()}
       ${noApp() ? `<button class="btn" data-acao="desconectarApp">${I('trocar')} Desconectar deste notebook</button>` : ''}
     </div>`;
@@ -305,6 +332,43 @@
 
   // Nomes da semana da igreja; o do dia vem primeiro.
   const NOMES_DA_SEMANA = ['Encontro com Deus', 'Reunião da prosperidade', 'Reunião de cura', 'Reunião dos filhos de Deus', 'Reunião da família', 'Reunião de libertação', 'Terapia do amor'];
+  // ---------- de quem é este celular ----------
+  // O celular guarda o nome do pastor: no aplicativo fica guardado no próprio aplicativo (vale mesmo se o
+  // endereço do notebook mudar); no navegador, fica no navegador.
+  function lembrado(chave) {
+    try { if (window.AltarApp && window.AltarApp.lembrado) return window.AltarApp.lembrado(chave) || ''; } catch { /* aplicativo antigo */ }
+    try { return localStorage.getItem('altar.' + chave) || ''; } catch { return ''; }
+  }
+  function lembrar(chave, valor) {
+    try { if (window.AltarApp && window.AltarApp.lembrar) { window.AltarApp.lembrar(chave, valor); return; } } catch { /* aplicativo antigo */ }
+    try { localStorage.setItem('altar.' + chave, valor); } catch { /* sem lugar para guardar: vale só enquanto a página estiver aberta */ }
+  }
+  try { dono = JSON.parse(lembrado('dono') || 'null'); } catch { dono = null; }
+  if (dono && typeof dono !== 'object') dono = null;
+  function guardarDono(d) { dono = d; lembrar('dono', JSON.stringify(d)); }
+  const mesmoNome = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  // O pastor deste celular na lista do notebook: pelo cadastro e, se o cadastro for de outro notebook, pelo nome.
+  function meuPastor() {
+    if (!dono || !dono.nome || !dados) return null;
+    const lista = dados.pastores || [];
+    return lista.find(p => p.id === dono.id) || lista.find(p => mesmoNome(p.nome, dono.nome)) || null;
+  }
+  const nomeDoDono = () => { const p = meuPastor(); return p ? p.nome : (dono && dono.nome) || ''; };
+  function telaDono() {
+    const pastores = dados.pastores || [], meu = meuPastor();
+    return `<div class="painel" role="dialog" aria-label="De quem é este celular">
+      <div class="painel-topo"><h2>De quem é este celular?</h2><button class="btn" data-acao="donoFechar">${I('fechar')} Fechar</button></div>
+      <div class="painel-corpo nova-reuniao" data-scroll="dono">
+      <p class="note">O Altar guarda o seu nome neste celular. Assim, ao criar uma reunião, o seu nome já vem escolhido.</p>
+      ${pastores.length ? `<div class="eyebrow">Toque no seu nome</div>
+        <div class="escolha-cel">${pastores.map(p => `<button class="btn ${meu && meu.id === p.id ? 'sel' : ''}" data-acao="donoEscolher" data-id="${p.id}">${esc(p.nome)}</button>`).join('')}</div>` : ''}
+      <div class="eyebrow">${pastores.length ? 'Não está na lista? Escreva o seu nome' : 'Escreva o seu nome'}</div>
+      <input type="text" id="dono-nome" class="campo-cel" value="${esc(perguntandoDono.nome)}" placeholder="Ex.: Pr. João" maxlength="40" autocomplete="off">
+      <button class="btn primary huge" data-acao="donoGuardar">${I('ok')} Guardar o nome</button>
+      <button class="btn" data-acao="donoNao">${dono && dono.nome ? 'Tirar o nome deste celular' : 'Agora não'}</button>
+    </div></div>`;
+  }
+
   function telaNovaReuniao() {
     const n = novaReuniao;
     const dia = new Date(dados.hoje + 'T12:00').getDay();
@@ -494,12 +558,19 @@
 
   function listaReuniao() {
     const r = dados.reuniao, e = dados.estado;
+    if (!r.itens.length) { arrumando = false; tirandoItem = null; }
+    if (arrumando) return `<div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([pastorDe(r), r.hora].filter(Boolean).join(' · '))}</span></div>
+      <div class="arr-topo"><p class="note">Para mudar a ordem, segure nas três barrinhas ${I('pega')} e arraste. A lixeira tira só da reunião: o arquivo continua na Biblioteca.</p>
+        <button class="btn primary" data-acao="arrPronto">${I('ok')} Pronto</button></div>
+      <div class="cards">${r.itens.map(cartaoArrumar).join('')}</div>
+      <button class="btn primary huge" data-acao="arrPronto">${I('ok')} Pronto</button>`;
     return `${controleJanela()}
       <div class="m-reuniao"><b>${esc(tituloReuniao(r))}</b><span>${esc([pastorDe(r), r.hora].filter(Boolean).join(' · '))}</span></div>
       <div class="eyebrow">Toque para mostrar na TV</div>
       <div class="cards">${r.itens.length ? r.itens.map(cartao).join('') : '<p class="note">Esta reunião ainda não tem itens.</p>'}</div>
       <section class="mais-opcoes" aria-label="Colocar ou mostrar outras coisas">
-        <button class="btn" data-acao="abrirColocar">${I('mais')} Colocar outra coisa na reunião</button>
+        <button class="btn" data-acao="abrirColocar">${I('mais')} Colocar na reunião</button>
+        ${r.itens.length ? `<button class="btn" data-acao="arrumar">${I('trocar')} Mudar a ordem ou tirar um item</button>` : ''}
         <button class="btn" data-acao="abrirTelegram">${I('video')} Fotos e vídeos do Telegram</button>
         ${e.tv.tipo === 'janela' ? '' : `<button class="btn" data-acao="abrirJanelas">${I('janela')} Mostrar uma janela do notebook na TV</button>`}
       </section>
@@ -627,16 +698,24 @@
       const msg = e.modo === 'pregacao'
         ? (r.repetida ? `Essa pregação já estava na Biblioteca ("${r.titulo}"). Não foi copiada de novo.${e.naReuniao ? ' Ela está na reunião.' : ''}`
           : r.qtd > 1 ? `${r.qtd} pregações chegaram no notebook, com ${r.imagens} imagens ao todo. ${onde}`
-          : r.qtd ? `A pregação com ${r.imagens} imagens chegou no notebook. ${onde}` : 'Não deu certo. A pregação precisa de fotos ou de um PDF.')
+          : r.qtd ? `A pregação com ${r.imagens} imagens chegou no notebook. ${onde}`
+          : r.semPowerPoint ? 'O notebook não tem o PowerPoint para abrir essa apresentação. Salve a apresentação como PDF e mande o PDF.'
+          : 'Não deu certo. A pregação precisa de fotos, de um PDF ou de um PowerPoint.')
         : (r.qtd ? `${r.qtd} ${r.qtd === 1 ? 'arquivo chegou' : 'arquivos chegaram'} no notebook. ${onde}`
           : r.repetidos ? (e.naReuniao ? 'Esses arquivos já estavam no notebook. Estão na reunião.' : 'Esses arquivos já estavam na Biblioteca.') : 'Nenhum arquivo chegou.');
       corpo = `<div class="envio-andamento"><div class="grande">${I(r.qtd || r.repetidos || r.repetida ? 'ok' : 'alerta')}</div><h3>${esc(msg)}</h3>
           ${r.qtd && r.repetidos ? `<p class="note">${r.repetidos} ${r.repetidos === 1 ? 'já estava' : 'já estavam'} na Biblioteca e não ${r.repetidos === 1 ? 'foi copiado' : 'foram copiados'} de novo.</p>` : ''}
-          ${r.ignorados ? `<p class="note">${r.ignorados} ${r.ignorados === 1 ? 'arquivo não era' : 'arquivos não eram'} foto, vídeo, música ou PDF e ${r.ignorados === 1 ? 'ficou' : 'ficaram'} de fora.</p>` : ''}
+          ${r.semPowerPoint && e.modo !== 'pregacao' ? '<p class="note">O notebook não tem o PowerPoint para abrir a apresentação. Salve a apresentação como PDF e mande o PDF.</p>'
+            : r.ignorados ? `<p class="note">${r.ignorados} ${r.ignorados === 1 ? 'arquivo não era' : 'arquivos não eram'} foto, vídeo, música, PDF ou PowerPoint e ${r.ignorados === 1 ? 'ficou' : 'ficaram'} de fora.</p>` : ''}
           ${!e.naReuniao && dados.reuniao && r.ids && r.ids.length
             ? `<button class="btn primary huge" data-acao="colocarRecebidos">${I('biblioteca')} Colocar na reunião agora</button>
                <button class="btn huge" data-acao="fecharEnvio">Agora não</button>`
             : '<button class="btn primary huge" data-acao="fecharEnvio">OK</button>'}</div>`;
+    } else if (e.status === 'perguntar') {
+      // Várias fotos de uma vez: o pastor decide na hora se cada uma é um cartão ou se viram uma pregação só.
+      corpo = `<div class="envio-andamento"><div class="grande">${I('imagem')}</div><h3>Você escolheu ${e.arquivos.length} fotos. Como elas entram?</h3>
+          <button class="btn primary huge envio-btn" data-acao="envioSeparadas"><span>${I('imagem')} Separadas</span><small>cada foto vira um cartão</small></button>
+          <button class="btn huge envio-btn" data-acao="envioJuntas"><span>${I('pregacao')} Juntas numa pregação</span><small>um cartão só, que passa com as setas</small></button></div>`;
     } else if (e.status === 'erro') {
       corpo = `<div class="envio-andamento"><div class="grande">${I('alerta')}</div><h3>Não deu certo.</h3>
           <p class="note">Confira se o celular está no Wi-Fi da igreja e tente de novo.</p>
@@ -645,9 +724,9 @@
       corpo = `<p class="note">${e.naReuniao ? 'Os arquivos vão para o notebook e já entram no fim da reunião.' : 'Os arquivos vão para a Biblioteca do notebook. Depois é só colocar na reunião.'}</p>
         <div class="eyebrow">O que vai mandar?</div>
         <label class="btn primary huge envio-btn">${I('imagem')} Fotos, vídeos e músicas
-          <input type="file" data-envio="arquivos" accept="image/*,video/*,audio/*,application/pdf" multiple hidden></label>
-        <label class="btn huge envio-btn">${I('pregacao')} Pregação ou palestra<small>o PDF da palestra, ou todas as imagens na ordem; vira uma pregação só</small>
-          <input type="file" data-envio="pregacao" accept="image/*,application/pdf" multiple hidden></label>`;
+          <input type="file" data-envio="arquivos" accept="image/*,video/*,audio/*,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.presentationml.slideshow,application/vnd.ms-powerpoint" multiple hidden></label>
+        <label class="btn huge envio-btn">${I('pregacao')} Pregação ou palestra<small>o PDF ou o PowerPoint da palestra, ou todas as imagens na ordem; vira uma pregação só</small>
+          <input type="file" data-envio="pregacao" accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.presentationml.slideshow,application/vnd.ms-powerpoint" multiple hidden></label>`;
     }
     const ocupado = e.status === 'enviando';
     return `<div class="painel" role="dialog" aria-label="Mandar para o notebook">
@@ -676,7 +755,7 @@
     return new Date(a, m - 1, dd).toLocaleDateString('pt-BR', { weekday: 'long' }) + ' · ' + ddmm;
   }
   const ABAS_BIB = [['imagem', 'Imagens'], ['video', 'Vídeos'], ['pregacao', 'Pregações'], ['musica', 'Músicas']];
-  // "Colocar outra coisa na reunião": uma porta só, e a pergunta é onde a coisa está.
+  // "Colocar na reunião": uma porta só, e a pergunta é onde a coisa está.
   function telaColocar() {
     const origem = (acao, icone, titulo, texto) => `<button class="btn origem" data-acao="${acao}">${I(icone)}<span><b>${titulo}</b><small>${texto}</small></span></button>`;
     return `<div class="painel" role="dialog" aria-label="Colocar na reunião">
@@ -687,7 +766,9 @@
         ${origem('abrirEnvioReuniao', 'enviar', 'Neste celular', 'Manda agora e já entra na reunião')}
         ${secaoRecentes()}
       </div>
-      ${recentes && recentes.sel.length ? `<div class="toolbar"><button class="btn primary" data-acao="colocarRecentes">Colocar ${recentes.sel.length} na reunião</button></div>` : ''}
+      ${recentes && recentes.sel.length ? `<div class="toolbar">
+        <button class="btn primary" data-acao="colocarRecentes">Colocar ${recentes.sel.length} na reunião${recentesSaoFotos() ? ' (separadas)' : ''}</button>
+        ${recentesSaoFotos() ? `<button class="btn" data-acao="juntarRecentes">${I('pregacao')} Juntar numa pregação</button>` : ''}</div>` : ''}
     </div>`;
   }
 
@@ -740,13 +821,16 @@
     return `<div class="eyebrow recentes-tit">Últimas fotos e vídeos deste celular</div>${corpo}`;
   }
 
+  /** Duas ou mais marcadas, todas fotos: dá para juntar numa pregação. */
+  const recentesSaoFotos = () => recentes.sel.length > 1 && recentes.sel.every(id => { const m = recentes.itens.find(x => String(x.id) === id); return m && m.tipo !== 'video'; });
+
   // O aplicativo manda os arquivos marcados; aqui fica só a tela de "Enviando…" (a mesma de "Neste celular").
-  function mandarRecentes() {
+  function mandarRecentes(modo = 'arquivos') {
     const itens = recentes.sel.map(id => recentes.itens.find(m => String(m.id) === id)).filter(Boolean).map(m => ({ id: m.id, tipo: m.tipo }));
     if (!itens.length) return;
     const lote = novoLote();
     colocando = false; recentes = null;
-    envio = { status: 'enviando', naReuniao: true, total: itens.length, atual: 1, pct: 0, modo: 'arquivos' };
+    envio = { status: 'enviando', naReuniao: true, total: itens.length, atual: 1, pct: 0, modo };
     window.aoMandarRecentes = async a => {
       if (!envio || envio.status !== 'enviando') return;
       if (!a.fim) {
@@ -757,7 +841,7 @@
         return;
       }
       window.aoMandarRecentes = null;
-      if (a.ok) await terminarEnvio(lote, 'arquivos'); else envio.status = 'erro';
+      if (a.ok) await terminarEnvio(lote, modo); else envio.status = 'erro';
       desenhar(true);
     };
     try { window.AltarApp.mandarRecentes(JSON.stringify({ lote, itens })); } catch { envio.status = 'erro'; }
@@ -768,6 +852,8 @@
     const naReuniao = new Set(dados.reuniao.itens.map(i => i.bibliotecaId).filter(Boolean));
     const lista = (dados.biblioteca || []).filter(x => x.tipo === b.aba).slice().reverse();
     const qtd = t => (dados.biblioteca || []).filter(x => x.tipo === t).length;
+    // Duas ou mais marcadas, todas imagens: dá para juntar numa pregação (um cartão só, com as setas).
+    const juntar = b.sel.length > 1 && b.sel.every(id => (dados.biblioteca || []).some(x => x.id === id && x.tipo === 'imagem'));
     const miniatura = x => (x.tipo === 'imagem' || x.tipo === 'pregacao' || (x.tipo === 'video' && x.capa))
       ? `<img src="${conexao.midia(x.tipo === 'video' ? x.capa : x.arquivo)}" alt="" loading="lazy">${x.tipo === 'video' ? `<i class="play">${I('play')}</i>` : ''}`
       : `<span class="ic-grande">${ICONE[x.tipo]}</span>`;
@@ -785,7 +871,8 @@
         <p class="note">Toque para marcar. Entram no fim da reunião, na ordem em que você marcou.</p>
         ${lista.length ? porDia(lista).map(g => `<div class="eyebrow">${esc(nomeDoDia(g.d))}</div><div class="bibs">${g.itens.map(cartaoBib).join('')}</div>`).join('') : '<p class="note">Nada aqui ainda.</p>'}
       </div>
-      <div class="toolbar"><button class="btn primary" data-acao="colocarBib" ${b.sel.length ? '' : 'disabled'}>${b.sel.length ? `Colocar ${b.sel.length} na reunião` : 'Marque o que vai entrar'}</button></div>
+      <div class="toolbar"><button class="btn primary" data-acao="colocarBib" ${b.sel.length ? '' : 'disabled'}>${b.sel.length ? `Colocar ${b.sel.length} na reunião${juntar ? ' (separadas)' : ''}` : 'Marque o que vai entrar'}</button>
+        ${juntar ? `<button class="btn" data-acao="juntarBib">${I('pregacao')} Juntar numa pregação</button>` : ''}</div>
     </div>`;
   }
 
@@ -849,17 +936,12 @@
       corpo = '<p class="note">Abrindo a Bíblia…</p>';
     } else if (p.etapa === 'livro') {
       const livros = p.test === 'AT' ? ind.slice(0, ULTIMO_DO_AT + 1) : ind.slice(ULTIMO_DO_AT + 1);
-      const recentes = dados.recentes || [];
       corpo = `
-        <div class="eyebrow">Últimos usados</div>
-        ${recentes.length
-          ? `<div class="grade2">${recentes.map(r => `<button class="btn" data-acao="recente" data-l="${r.l}" data-c="${r.c}" data-v="${r.v}">${esc(r.rotulo)}</button>`).join('')}</div>`
-          : '<p class="note">Os versículos que você mostrar vão aparecer aqui.</p>'}
-        <div class="eyebrow">Ou escolha o livro</div>
-        <div class="abas2">
-          <button class="btn ${p.test === 'AT' ? 'sel' : ''}" data-acao="testamento" data-v="AT">Antigo Testamento</button>
-          <button class="btn ${p.test === 'NT' ? 'sel' : ''}" data-acao="testamento" data-v="NT">Novo Testamento</button>
+        <div class="abas2 abas-test" role="group" aria-label="Testamento">
+          <button class="btn ${p.test === 'AT' ? 'sel' : ''}" data-acao="testamento" data-v="AT" aria-pressed="${p.test === 'AT'}">Antigo Testamento</button>
+          <button class="btn ${p.test === 'NT' ? 'sel' : ''}" data-acao="testamento" data-v="NT" aria-pressed="${p.test === 'NT'}">Novo Testamento</button>
         </div>
+        <div class="eyebrow">Livros do ${p.test === 'AT' ? 'Antigo' : 'Novo'} Testamento</div>
         <div class="grade2">${livros.map(x => `<button class="btn" data-acao="livro" data-l="${x.l}">${esc(x.nome)}</button>`).join('')}</div>`;
     } else if (p.etapa === 'cap') {
       const livro = ind[p.l];
@@ -928,14 +1010,17 @@
   }
 
   function desenhar(forcar) {
+    if (arrasto) return;   // arrastando um item: a tela é redesenhada quando o dedo soltar
     let html;
     if (dados) atualizarIcone();
     if (con.semToken) html = telaSemToken();
     else if (!dados) html = `<div class="pad">${avisoConexao() || '<p class="note">Carregando…</p>'}</div>`;
     if (dados && dados.estado.reuniaoId !== reuniaoVista) { reuniaoVista = dados.estado.reuniaoId; naInicio = false; }
     if (con.semToken || !dados) { /* sem conexão: já decidido acima */ }
-    else if (dados.estado.reuniaoId && dados.reuniao && !naInicio) { confirmarDesconectar = false; html = telaReuniao() + sobreposicao(); }
-    else { if (telegram) fecharTelegram(); escolhendo = null; palavraAberta = false; pregacaoAberta = false; escolhendoMusica = false; escolhendoBib = null; colocando = false; html = telaEscolher() + (confirmarDesconectar ? telaDesconectar() : envio ? telaEnvio() : novaReuniao ? telaNovaReuniao() : confirmarEncerrar ? telaConfirmar() : escolhendoJanela ? telaJanelas() : '');}
+    else if (dados.estado.reuniaoId && dados.reuniao && !naInicio) { confirmarDesconectar = false; perguntandoDono = null; html = telaReuniao() + sobreposicao(); }
+    else { if (telegram) fecharTelegram(); arrumando = false; tirandoItem = null; escolhendo = null; palavraAberta = false; pregacaoAberta = false; escolhendoMusica = false; escolhendoBib = null; colocando = false;
+      if (dono === null && !perguntouDono && !dados.estado.reuniaoId && !confirmarDesconectar && !envio && !novaReuniao && !escolhendoJanela) { perguntouDono = true; perguntandoDono = { nome: '' }; }
+      html = telaEscolher() + (confirmarDesconectar ? telaDesconectar() : perguntandoDono ? telaDono() : envio ? telaEnvio() : novaReuniao ? telaNovaReuniao() : confirmarEncerrar ? telaConfirmar() : escolhendoJanela ? telaJanelas() : '');}
     if (dados && dados.estado.reuniaoId && !naInicio) novaReuniao = null;
     if (dados && dados.estado.tv.tipo !== 'janela') avisoTecla = '';
     guardarPasso();
@@ -956,9 +1041,10 @@
     chaveTela = chave;
     const rolagem = {};
     app.querySelectorAll('[data-scroll]').forEach(el => { rolagem[el.dataset.scroll] = el.scrollTop; });
-    const digitando = document.activeElement && document.activeElement.id === 'nr-nome' ? document.activeElement.selectionStart : null;
+    const campo = document.activeElement && ['nr-nome', 'dono-nome'].includes(document.activeElement.id) ? document.activeElement.id : null;
+    const digitando = campo ? document.activeElement.selectionStart : null;
     app.innerHTML = html;
-    if (digitando !== null && document.getElementById('nr-nome')) { const i = document.getElementById('nr-nome'); i.focus(); i.setSelectionRange(digitando, digitando); }
+    if (campo && document.getElementById(campo)) { const i = document.getElementById(campo); i.focus(); i.setSelectionRange(digitando, digitando); }
     app.querySelectorAll('[data-scroll]').forEach(el => { if (rolagem[el.dataset.scroll]) el.scrollTop = rolagem[el.dataset.scroll]; });
     window.Versiculo.ajustar(app);
   }
@@ -969,17 +1055,28 @@
   function voltarUmPasso() {
     if (!dados || con.semToken) return false;
     const naReuniao = dados.estado.reuniaoId && dados.reuniao && !naInicio;
+    if (arrasto) { soltarArrasto(false); return true; }
     if (confirmarEncerrar) { confirmarEncerrar = false; return true; }
     if (confirmarDesconectar) { confirmarDesconectar = false; return true; }
+    if (perguntandoDono) { ACOES.donoFechar(); return true; }
     if (telegram) {
       if (telegram.modo === 'videos' || (telegram.modo === 'pasta' && telegram.ligada)) ACOES.tgInicio();
       else if (telegram.modo !== 'baixando') fecharTelegram();
       else return true; // baixando: fica na tela (o download continua)
       return true;
     }
-    if (envio) { if (envio.status !== 'enviando') envio = null; return true; }
-    if (escolhendoBib) { escolhendoBib = null; return true; }
+    // O que foi aberto pela pergunta "Colocar na reunião" volta para ela.
+    if (envio) {
+      const paraColocar = naReuniao && envio.naReuniao && (envio.status === 'escolher' || envio.status === 'perguntar');
+      if (envio.status !== 'enviando') { envio = null; if (paraColocar) ACOES.abrirColocar(); }
+      return true;
+    }
+    if (escolhendoBib) { const paraColocar = naReuniao && escolhendoBib.deColocar; escolhendoBib = null; if (paraColocar) ACOES.abrirColocar(); return true; }
     if (colocando) { colocando = false; recentes = null; return true; }
+    if (arrumando && naReuniao) {
+      if (tirandoItem) tirandoItem = null; else arrumando = false;
+      return true;
+    }
     if (escolhendoJanela) { escolhendoJanela = null; return true; }
     if (novaReuniao) { novaReuniao = null; return true; }
     if (naReuniao && escolhendo) {
@@ -989,23 +1086,124 @@
       return true;
     }
     if (naReuniao && (palavraAberta || pregacaoAberta || escolhendoMusica)) { palavraAberta = false; pregacaoAberta = false; escolhendoMusica = false; return true; }
-    if (naReuniao) { naInicio = true; return true; }
+    if (naReuniao) { naInicio = true; arrumando = false; tirandoItem = null; return true; }
     if (verApp) { verApp = false; return true; }
     if (verOutras) { verOutras = false; return true; }
     return false;
   }
-  // Tem para onde voltar? Então deixa um passo a mais no histórico do navegador para o voltar cair aqui.
+  // Tem para onde voltar? (Tem de dizer "sim" exatamente quando o voltarUmPasso faria alguma coisa.)
   function temParaOndeVoltar() {
     if (!dados || con.semToken) return false;
-    return !!(confirmarEncerrar || confirmarDesconectar || telegram || envio || escolhendoBib || colocando || escolhendoJanela || novaReuniao || verOutras || verApp
+    return !!(arrasto || confirmarEncerrar || confirmarDesconectar || perguntandoDono || telegram || envio || escolhendoBib || colocando || escolhendoJanela || novaReuniao || verOutras || verApp
       || (dados.estado.reuniaoId && dados.reuniao && !naInicio));
   }
+
+  // No aplicativo (versão 5 em diante), o botão de voltar pergunta direto à página o que fazer:
+  // "sim" = voltei um passo; "nao" = já está no começo, pode sair do aplicativo.
+  window.altarVoltar = () => {
+    if (!voltarUmPasso()) return 'nao';
+    desenhar(true);
+    return 'sim';
+  };
+  const appPerguntaVoltar = () => noApp() && versaoDoApp() >= 5;
+
+  // No navegador (e no aplicativo antigo) o voltar anda no histórico do navegador. A página deixa um passo
+  // guardado a cada toque (até 6), para vários "voltar" seguidos caírem aqui; chegando no começo, devolve os
+  // passos que sobraram, e o próximo voltar sai da página. (Passo guardado sem toque o navegador pode pular.)
+  let passos = 0, rebobinando = false, tocou = false;
+  try { passos = (history.state && history.state.altar) || 0; } catch { /* sem histórico */ }
   function guardarPasso() {
-    try { if (temParaOndeVoltar() && !(history.state && history.state.altar)) history.pushState({ altar: 1 }, ''); } catch {}
+    const comToque = tocou; tocou = false;
+    if (appPerguntaVoltar() || rebobinando) return;
+    try {
+      if (!temParaOndeVoltar()) {
+        if (passos > 0) { rebobinando = true; setTimeout(() => { rebobinando = false; }, 600); history.go(-passos); passos = 0; }
+      } else if (passos === 0 || (comToque && passos < 6)) history.pushState({ altar: ++passos }, '');
+    } catch { /* sem histórico */ }
   }
-  window.addEventListener('popstate', () => {
-    if (voltarUmPasso()) { desenhar(true); guardarPasso(); }
+  window.addEventListener('popstate', ev => {
+    passos = (ev.state && ev.state.altar) || 0;
+    if (rebobinando) { rebobinando = false; return; }
+    if (voltarUmPasso()) desenhar(true);
   });
+
+  // ---------- arrastar um item da reunião para outro lugar ----------
+  // O dedo pega pelas três barrinhas; os outros cartões abrem espaço; ao soltar, a ordem nova vai para o notebook.
+  function comecarArrasto(ev, pega) {
+    const el = pega.closest('.card.arrumar'), cards = [...el.parentNode.querySelectorAll('.card.arrumar')];
+    if (cards.length < 2) return;
+    ev.preventDefault();
+    const rolo = el.closest('[data-scroll]') || document.scrollingElement;
+    const caixas = cards.map(c => c.getBoundingClientRect());
+    const de = cards.indexOf(el);
+    arrasto = {
+      id: el.dataset.item, el, cards, de, para: de, rolo, y: ev.clientY, y0: ev.clientY, rolo0: rolo.scrollTop, ponteiro: ev.pointerId,
+      topo: caixas.map(c => c.top + rolo.scrollTop), alto: caixas.map(c => c.height),
+      vao: caixas[1].top - caixas[0].bottom,
+    };
+    try { pega.setPointerCapture(ev.pointerId); } catch { /* toque de mentira (teste) */ }
+    el.classList.add('arrastando');
+    try { navigator.vibrate && navigator.vibrate(12); } catch { /* sem vibração */ }
+    window.addEventListener('pointermove', moverArrasto);
+    window.addEventListener('pointerup', aoSoltarArrasto);
+    window.addEventListener('pointercancel', aoCancelarArrasto);
+    arrasto.quadro = requestAnimationFrame(rolarArrasto);
+  }
+  function posicionarArrasto() {
+    const a = arrasto, n = a.cards.length;
+    let dy = (a.y - a.y0) + (a.rolo.scrollTop - a.rolo0);
+    dy = Math.max(a.topo[0] - a.topo[a.de], Math.min(a.topo[n - 1] + a.alto[n - 1] - a.topo[a.de] - a.alto[a.de], dy));
+    // Um vizinho abre espaço quando a borda do cartão arrastado passa do meio dele.
+    const cima = a.topo[a.de] + dy, baixo = cima + a.alto[a.de], passo = a.alto[a.de] + a.vao;
+    let para = a.de;
+    a.cards.forEach((c, j) => {
+      if (j === a.de) return;
+      const meio = a.topo[j] + a.alto[j] / 2;
+      const abre = j < a.de ? cima < meio : baixo > meio;
+      if (abre) para += j < a.de ? -1 : 1;
+      c.style.transform = abre ? `translateY(${j < a.de ? passo : -passo}px)` : '';
+    });
+    a.para = para;
+    a.el.style.transform = `translateY(${dy}px)`;
+  }
+  function moverArrasto(ev) {
+    if (!arrasto || ev.pointerId !== arrasto.ponteiro) return;
+    arrasto.y = ev.clientY;
+    posicionarArrasto();
+  }
+  // Com o dedo perto da borda de cima ou de baixo, a lista rola sozinha.
+  function rolarArrasto() {
+    if (!arrasto) return;
+    const a = arrasto, c = a.rolo.getBoundingClientRect(), topo = Math.max(c.top, 0), fundo = Math.min(c.bottom, window.innerHeight);
+    const v = a.y < topo + 70 ? -Math.ceil((topo + 70 - a.y) / 6) : a.y > fundo - 70 ? Math.ceil((a.y - (fundo - 70)) / 6) : 0;
+    if (v) { const antes = a.rolo.scrollTop; a.rolo.scrollTop += Math.max(-14, Math.min(14, v)); if (a.rolo.scrollTop !== antes) posicionarArrasto(); }
+    a.quadro = requestAnimationFrame(rolarArrasto);
+  }
+  function soltarArrasto(valeu) {
+    const a = arrasto;
+    if (!a) return;
+    arrasto = null;
+    cancelAnimationFrame(a.quadro);
+    window.removeEventListener('pointermove', moverArrasto);
+    window.removeEventListener('pointerup', aoSoltarArrasto);
+    window.removeEventListener('pointercancel', aoCancelarArrasto);
+    const itens = dados && dados.reuniao && dados.reuniao.itens, i = itens ? itens.findIndex(x => x.id === a.id) : -1;
+    if (valeu && a.para !== a.de && i === a.de) {
+      // Já mostra na ordem nova (o notebook confirma em seguida).
+      itens.splice(a.para, 0, itens.splice(i, 1)[0]);
+      tirandoItem = null;
+      enviar({ cmd: 'moverItemDaReuniao', itemId: a.id, delta: a.para - a.de });
+    }
+    desenhar(true);
+  }
+  function aoSoltarArrasto(ev) { if (arrasto && ev.pointerId === arrasto.ponteiro) soltarArrasto(true); }
+  function aoCancelarArrasto(ev) { if (arrasto && ev.pointerId === arrasto.ponteiro) soltarArrasto(false); }
+  app.addEventListener('pointerdown', ev => {
+    const pega = ev.target.closest && ev.target.closest('.arr-pega');
+    if (pega && !arrasto && (ev.button || 0) === 0) comecarArrasto(ev, pega);
+  });
+  // Segurar o dedo nas barrinhas não abre o menu do navegador.
+  app.addEventListener('contextmenu', ev => { if (ev.target.closest && ev.target.closest('.card.arrumar')) ev.preventDefault(); });
 
   // ---------- toques ----------
   const ACOES = {
@@ -1072,6 +1270,12 @@
     },
     navMusica: () => { escolhendoMusica = true; escolhendo = null; palavraAberta = false; pregacaoAberta = false; },
     encerrar: () => { confirmarEncerrar = true; },
+    // Arrumar a reunião pelo celular: ordem dos itens e tirar um item
+    arrumar: () => { arrumando = true; tirandoItem = null; },
+    arrPronto: () => { arrumando = false; tirandoItem = null; },
+    arrTirar: el => { tirandoItem = tirandoItem === el.dataset.item ? null : el.dataset.item; },
+    arrTirarNao: () => { tirandoItem = null; },
+    arrTirarSim: el => { tirandoItem = null; enviar({ cmd: 'tirarItemDaReuniao', itemId: el.dataset.item }); },
     desconectarApp: () => { confirmarDesconectar = true; },
     desconectarNao: () => { confirmarDesconectar = false; },
     desconectarSim: () => {
@@ -1088,8 +1292,27 @@
       try { window.AltarApp.atualizar(); } catch { atualizacaoApp = { status: 'erro' }; }
     },
     novaReuniao: () => {
-      const p = dados.pastores || [];
-      novaReuniao = { pastorId: p.length === 1 ? p[0].id : null, nome: '' };
+      // Quem vai conduzir já vem escolhido: o pastor deste celular (ou o único da lista).
+      const p = dados.pastores || [], meu = meuPastor();
+      novaReuniao = { pastorId: meu ? meu.id : p.length === 1 ? p[0].id : null, nome: '' };
+    },
+    // De quem é este celular
+    donoAbrir: () => { perguntandoDono = { nome: '' }; },
+    // Fechar sem responder vale como "agora não": a pergunta não abre sozinha de novo.
+    donoFechar: () => { perguntandoDono = null; if (dono === null) guardarDono({ nao: true }); },
+    donoNao: () => { perguntandoDono = null; guardarDono({ nao: true }); },
+    donoEscolher: el => {
+      const p = (dados.pastores || []).find(x => x.id === el.dataset.id);
+      if (p) guardarDono({ id: p.id, nome: p.nome });
+      perguntandoDono = null;
+    },
+    donoGuardar: () => {
+      const nome = perguntandoDono.nome.replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!nome) return;
+      const p = (dados.pastores || []).find(x => mesmoNome(x.nome, nome));
+      guardarDono({ id: p ? p.id : null, nome: p ? p.nome : nome });
+      if (!p) enviar({ cmd: 'souPastor', nome });   // entra na lista de pastores do notebook
+      perguntandoDono = null;
     },
     fecharNovaReuniao: () => { novaReuniao = null; },
     nrPastor: el => { novaReuniao.pastorId = novaReuniao.pastorId === el.dataset.id ? null : el.dataset.id; },
@@ -1118,6 +1341,7 @@
       if (i >= 0) s.splice(i, 1); else s.push(el.dataset.id);
     },
     colocarRecentes: () => mandarRecentes(),
+    juntarRecentes: () => mandarRecentes('pregacao'),
     abrirEnvioReuniao: () => { colocando = false; envio = { status: 'escolher', naReuniao: true }; },
     colocarRecebidos: () => {
       // Abre "Colocar na reunião" já com o que acabou de chegar marcado.
@@ -1126,7 +1350,7 @@
       escolhendoBib = { aba: primeiro ? primeiro.tipo : 'imagem', sel: [...ids] };
       envio = null;
     },
-    abrirBib: () => { colocando = false; escolhendoBib = { aba: 'imagem', sel: [] }; },
+    abrirBib: () => { colocando = false; escolhendoBib = { aba: 'imagem', sel: [], deColocar: true }; },
     fecharBib: () => { escolhendoBib = null; },
     abaBib: el => { escolhendoBib.aba = el.dataset.v; },
     marcarBib: el => {
@@ -1137,7 +1361,13 @@
       enviar({ cmd: 'colocarDaBiblioteca', bibliotecaIds: escolhendoBib.sel });
       escolhendoBib = null;
     },
+    juntarBib: () => {
+      enviar({ cmd: 'juntarDaBiblioteca', bibliotecaIds: escolhendoBib.sel });
+      escolhendoBib = null;
+    },
     envioDeNovo: () => { envio.status = 'escolher'; },
+    envioSeparadas: () => { const a = envio.arquivos; envio.arquivos = null; enviarArquivos(a, 'arquivos'); },
+    envioJuntas: () => { const a = envio.arquivos; envio.arquivos = null; enviarArquivos(a, 'pregacao'); },
     fecharEnvio: () => { envio = null; },
     fecharMusicas: () => { escolhendoMusica = false; },
     tocarMusica: el => { enviar({ cmd: 'tocarMusica', bibliotecaId: el.dataset.id }); escolhendoMusica = false; },
@@ -1165,7 +1395,6 @@
       else escolhendo = { etapa: 'livro', test: escolhendo.test };
     },
     versiculo: el => abrirVersiculo({ l: escolhendo.l, c: escolhendo.c, v: Number(el.dataset.v) }),
-    recente: el => abrirVersiculo({ l: Number(el.dataset.l), c: Number(el.dataset.c), v: Number(el.dataset.v) }),
   };
 
   // Se já tem versículo na TV (na Palavra ou avulso), só pula para o novo e continua ali.
@@ -1213,6 +1442,7 @@
   app.addEventListener('click', ev => {
     const el = ev.target.closest('[data-cmd], [data-acao]');
     if (!el || el.disabled) return;
+    tocou = true;
     const acao = el.dataset.acao;
     if (acao && ACOES[acao]) { ACOES[acao](el); desenhar(true); return; }
     const cmd = el.dataset.cmd;
@@ -1229,10 +1459,19 @@
   });
 
   // Escolheu os arquivos no celular: já começa a mandar.
-  app.addEventListener('input', ev => { if (ev.target.id === 'nr-nome' && novaReuniao) novaReuniao.nome = ev.target.value; });
+  app.addEventListener('input', ev => {
+    if (ev.target.id === 'nr-nome' && novaReuniao) novaReuniao.nome = ev.target.value;
+    if (ev.target.id === 'dono-nome' && perguntandoDono) perguntandoDono.nome = ev.target.value;
+  });
   app.addEventListener('change', ev => {
     const input = ev.target.closest('input[data-envio]');
-    if (input && envio && input.files.length) enviarArquivos(input.files, input.dataset.envio);
+    if (!input || !envio || !input.files.length) return;
+    const arquivos = Array.from(input.files);
+    // Só fotos, e mais de uma: pergunta se entram separadas ou juntas numa pregação.
+    if (input.dataset.envio === 'arquivos' && arquivos.length > 1 && arquivos.every(a => /^image\//.test(a.type))) {
+      Object.assign(envio, { status: 'perguntar', arquivos });
+      desenhar(true);
+    } else enviarArquivos(arquivos, input.dataset.envio);
   });
 
   window.addEventListener('resize', () => window.Versiculo.ajustar(app));

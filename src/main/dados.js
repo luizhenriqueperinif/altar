@@ -312,6 +312,79 @@ class Dados {
     return this._porMarca().get('pregacao|' + marca) || null;
   }
 
+  /** Os arquivos (na pasta de mídia) das imagens soltas da Biblioteca, na ordem pedida e sem repetir. */
+  _caminhosDasImagens(bids) {
+    const vistos = new Set();
+    return (Array.isArray(bids) ? bids : [])
+      .filter(bid => typeof bid === 'string' && !vistos.has(bid) && vistos.add(bid))
+      .map(bid => this.arquivoDaBiblioteca(bid))
+      .filter(b => b && b.tipo === 'imagem')
+      .map(b => path.join(this.pastaMidia, b.arquivo))
+      .filter(c => fs.existsSync(c));
+  }
+
+  /**
+   * Junta imagens que já estão na Biblioteca numa pregação nova, na ordem em que foram marcadas.
+   * As imagens continuam na Biblioteca, soltas; a pregação fica com cópias.
+   */
+  juntarEmPregacao(bids, { titulo } = {}) {
+    const caminhos = this._caminhosDasImagens(bids);
+    if (caminhos.length < 2) return null;
+    return this.criarPregacao(caminhos, { titulo, manterOrdem: true });
+  }
+
+  _pregacao(bid) {
+    const b = this.arquivoDaBiblioteca(bid);
+    return b && b.tipo === 'pregacao' ? b : null;
+  }
+
+  /** Depois de mexer nas imagens: a capa é a primeira e a marca volta a ser a das imagens, na ordem nova. */
+  _pregacaoMudou(b) {
+    b.arquivo = b.arquivos[0];
+    try { b.marca = marcaDaPregacao(b.arquivos.map(a => marcaDoArquivo(path.join(this.pastaMidia, a)))); } catch { delete b.marca; }
+    this.salvar();
+  }
+
+  /** Sobe (delta -1) ou desce (+1) a imagem que está na posição n (a primeira é 0). */
+  moverImagemDaPregacao(bid, n, delta) {
+    const b = this._pregacao(bid);
+    const para = n + delta;
+    if (!b || !Number.isInteger(n) || !Number.isInteger(para) || n < 0 || para < 0 || n >= b.arquivos.length || para >= b.arquivos.length || n === para) return false;
+    const [imagem] = b.arquivos.splice(n, 1);
+    b.arquivos.splice(para, 0, imagem);
+    this._pregacaoMudou(b);
+    return true;
+  }
+
+  /** Tira uma imagem da pregação (a última que sobrou não sai: para isso apaga-se a pregação). */
+  tirarImagemDaPregacao(bid, n) {
+    const b = this._pregacao(bid);
+    if (!b || !Number.isInteger(n) || n < 0 || n >= b.arquivos.length || b.arquivos.length < 2) return false;
+    const [imagem] = b.arquivos.splice(n, 1);
+    if (!b.arquivos.includes(imagem)) fs.rmSync(path.join(this.pastaMidia, imagem), { force: true });
+    this._pregacaoMudou(b);
+    return true;
+  }
+
+  /** Coloca mais imagens no fim da pregação (arquivos do computador). Devolve quantas entraram. */
+  colocarArquivosNaPregacao(bid, caminhos) {
+    const b = this._pregacao(bid);
+    const imagens = (Array.isArray(caminhos) ? caminhos : []).filter(c => typeof c === 'string' && tipoDoArquivo(c) === 'imagem' && fs.existsSync(c));
+    if (!b || !imagens.length) return 0;
+    for (const c of imagens) {
+      const nome = id() + path.extname(c).toLowerCase();
+      fs.copyFileSync(c, path.join(this.pastaMidia, nome));
+      b.arquivos.push(nome);
+    }
+    this._pregacaoMudou(b);
+    return imagens.length;
+  }
+
+  /** Coloca no fim da pregação imagens que já estão na Biblioteca. Devolve quantas entraram. */
+  colocarImagensNaPregacao(bid, bids) {
+    return this.colocarArquivosNaPregacao(bid, this._caminhosDasImagens(bids));
+  }
+
   // ---------- Categorias de música ("Oração forte", "Fundo de busca"...) ----------
 
   get categoriasMusica() { return this.d.config.categoriasMusica || (this.d.config.categoriasMusica = []); }

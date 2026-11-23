@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('notebook', {
   /** Imagens arrastadas para a aba Pregações: viram uma pregação só. */
   importarPregacaoArquivos: arquivos =>
     ipcRenderer.invoke('importar-pregacao', { caminhos: Array.from(arquivos, f => webUtils.getPathForFile(f)) }),
+  /** Mais imagens do computador para o fim de uma pregação que já existe. */
+  maisImagensNaPregacao: id => ipcRenderer.invoke('pregacao-mais-imagens', { id }),
   trocarTelaEspera: () => ipcRenderer.invoke('trocar-tela-espera'),
   telaEsperaDoPrograma: () => ipcRenderer.invoke('tela-espera-do-programa'),
   atualizarEndereco: () => ipcRenderer.invoke('atualizar-endereco'),

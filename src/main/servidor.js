@@ -10,7 +10,7 @@ const { estadoInicial, aplicar } = require('./conducao');
 const biblia = require('./biblia');
 const tg = require('./telegram');
 const tgConta = require('./telegramConta');
-const { criarPregacoes, resumoDasPregacoes, ehPdf } = require('./pregacoes');
+const { criarPregacoes, resumoDasPregacoes, ehPalestra } = require('./pregacoes');
 const { dividirVersiculo, limiteDaLetra, maxDaLetra, letraValida } = require('./partes');
 
 const RAIZ = path.join(__dirname, '..', '..');
@@ -101,7 +101,7 @@ function versaoDoApk(apk) {
   return null;
 }
 
-function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens = null, apk = null, aoErrar = () => {} }) {
+function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens = null, pptParaImagens = null, apk = null, aoErrar = () => {} }) {
   // O aplicativo do Android vai junto com o programa do notebook; o celular baixa daqui (ver /app/Altar.apk).
   const temApk = !!apk && fs.existsSync(apk);
   const appVersao = temApk ? versaoDoApk(apk) : null;
@@ -227,18 +227,18 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     let resposta;
     try {
       if (modo === 'pregacao') {
-        // Imagens soltas viram uma pregação; cada PDF (palestra) vira outra, com uma imagem por página.
-        resposta = resumoDasPregacoes(await criarPregacoes(dados, caminhos, { manterOrdem: true, pdfParaImagens, aoErrar }));
+        // Imagens soltas viram uma pregação; cada PDF ou PowerPoint (palestra) vira outra, com uma imagem por página.
+        resposta = resumoDasPregacoes(await criarPregacoes(dados, caminhos, { manterOrdem: true, pdfParaImagens, pptParaImagens, aoErrar }));
         if (resposta.ids.length && reuniaoId && dados.reuniao(reuniaoId)) dados.adicionarItens(reuniaoId, resposta.ids, { semRepetir: true });
       } else {
-        // Um PDF no meio das fotos e vídeos também vira pregação.
-        const pdfs = caminhos.filter(ehPdf);
-        const palestras = resumoDasPregacoes(await criarPregacoes(dados, pdfs, { pdfParaImagens, aoErrar }));
-        const { novos, repetidos, ignorados } = dados.importarArquivos(caminhos.filter(c => !ehPdf(c)));
+        // Um PDF ou PowerPoint no meio das fotos e vídeos também vira pregação.
+        const pdfs = caminhos.filter(ehPalestra);
+        const palestras = resumoDasPregacoes(await criarPregacoes(dados, pdfs, { pdfParaImagens, pptParaImagens, aoErrar }));
+        const { novos, repetidos, ignorados } = dados.importarArquivos(caminhos.filter(c => !ehPalestra(c)));
         const todos = [...novos, ...repetidos].map(b => b.id).concat(palestras.ids);
         if (todos.length && reuniaoId && dados.reuniao(reuniaoId)) dados.adicionarItens(reuniaoId, todos, { semRepetir: true });
         // ids: os novos e os que já estavam (o pastor pode querer colocar na reunião do mesmo jeito)
-        resposta = { qtd: novos.length + palestras.novas, repetidos: repetidos.length + palestras.qtd - palestras.novas, ignorados: ignorados + palestras.ignorados, ids: todos };
+        resposta = { qtd: novos.length + palestras.novas, repetidos: repetidos.length + palestras.qtd - palestras.novas, ignorados: ignorados + palestras.ignorados, ids: todos, semPowerPoint: palestras.semPowerPoint };
       }
     } catch (e) {
       aoErrar(e);
@@ -439,6 +439,16 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     moverItem: c => dados.moverItem(c.reuniaoId, c.itemId, Number(c.delta)),
     removerItem: c => dados.removerItem(c.reuniaoId, c.itemId),
     renomearArquivo: c => dados.renomearArquivo(c.id, c.titulo),
+    // Pregação feita com imagens que já estão na Biblioteca (e, se veio uma reunião, já entra nela).
+    juntarEmPregacao: c => {
+      const feito = dados.juntarEmPregacao(c.ids, { titulo: c.titulo });
+      if (!feito) return null;
+      if (c.reuniaoId) dados.adicionarItens(c.reuniaoId, [feito.pregacao.id], { semRepetir: true });
+      return { id: feito.pregacao.id, titulo: feito.pregacao.titulo, imagens: feito.pregacao.arquivos.length, repetida: !!feito.repetida };
+    },
+    moverImagemDaPregacao: c => { dados.moverImagemDaPregacao(c.id, Number(c.n), Number(c.delta)); acertarSlideDaTv(); },
+    tirarImagemDaPregacao: c => { dados.tirarImagemDaPregacao(c.id, Number(c.n)); acertarSlideDaTv(); },
+    colocarImagensNaPregacao: c => dados.colocarImagensNaPregacao(c.id, c.ids),
     marcarParaEspera: c => dados.marcarParaEspera(c.id, !!c.sim),
     criarCategoria: c => dados.criarCategoria(c.nome),
     renomearCategoria: c => dados.renomearCategoria(c.id, c.nome),
@@ -455,9 +465,16 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
 
   const mandar = (ws, m) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(m)); } catch {} };
 
-  // Origens (Telegram) dos arquivos que já estão na reunião aberta.
-  function origensDaReuniao() {
-    const r = estado.reuniaoId && dados.reuniao(estado.reuniaoId);
+  // A pregação que está na TV perdeu imagens: a TV fica na última que sobrou, em vez de numa que não existe mais.
+  function acertarSlideDaTv() {
+    if (!estado.reuniaoId || estado.tv.tipo !== 'item' || !Number.isInteger(estado.tv.slide)) return;
+    const it = dados.item(estado.reuniaoId, estado.tv.itemId);
+    if (it && it.arquivos && estado.tv.slide >= it.arquivos.length) estado = { ...estado, tv: { ...estado.tv, slide: it.arquivos.length - 1 } };
+  }
+
+  // Origens (Telegram) dos arquivos que já estão na reunião (a que está acontecendo ou a que o Painel está preparando).
+  function origensDaReuniao(rid = estado.reuniaoId) {
+    const r = rid && dados.reuniao(rid);
     return new Set(r ? r.itens.flatMap(i => dados.origensDe(dados.arquivoDaBiblioteca(i.bibliotecaId))) : []);
   }
   // Coloca o arquivo da Biblioteca na reunião aberta (sem repetir) e, se `naTv`, mostra na TV. Devolve o item.
@@ -475,6 +492,39 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
     if ((cmd.cmd === 'videoProgresso' || cmd.cmd === 'audioProgresso') && papel !== 'telao') return;
     if (cmd.cmd === 'colocarDaBiblioteca') {
       if (estado.reuniaoId && Array.isArray(cmd.bibliotecaIds)) dados.adicionarItens(estado.reuniaoId, cmd.bibliotecaIds.filter(x => typeof x === 'string'));
+      transmitir();
+      return;
+    }
+    // Pelo celular, na reunião que está acontecendo: mudar a ordem dos itens e tirar um item.
+    // (O item que está na TV, ou a música que está tocando, não sai: o pastor ficaria sem os botões dele.
+    //  O arquivo continua na Biblioteca.)
+    if (cmd.cmd === 'moverItemDaReuniao' || cmd.cmd === 'tirarItemDaReuniao') {
+      if (papel === 'telao' || !estado.reuniaoId || typeof cmd.itemId !== 'string') return;
+      if (cmd.cmd === 'moverItemDaReuniao') dados.moverItem(estado.reuniaoId, cmd.itemId, Math.trunc(Number(cmd.delta)) || 0);
+      else {
+        const emUso = (estado.tv.tipo === 'item' && estado.tv.itemId === cmd.itemId) || (estado.audio && estado.audio.itemId === cmd.itemId);
+        if (!emUso) dados.removerItem(estado.reuniaoId, cmd.itemId);
+      }
+      transmitir();
+      return;
+    }
+    // Pelo celular: as imagens marcadas na Biblioteca viram uma pregação só, que entra no fim da reunião.
+    if (cmd.cmd === 'juntarDaBiblioteca') {
+      if (papel === 'telao' || !estado.reuniaoId) return;
+      const feito = dados.juntarEmPregacao(cmd.bibliotecaIds);
+      if (feito) dados.adicionarItens(estado.reuniaoId, [feito.pregacao.id], { semRepetir: true });
+      mandar(ws, { tipo: 'juntou', ok: !!feito, imagens: feito ? feito.pregacao.arquivos.length : 0, repetida: !!(feito && feito.repetida) });
+      transmitir();
+      return;
+    }
+    // O celular diz de quem ele é com um nome que ainda não está na lista: o pastor entra na lista do notebook
+    // (se já existe um com esse nome, é ele) e o celular recebe o cadastro para guardar.
+    if (cmd.cmd === 'souPastor') {
+      if (papel === 'telao') return;
+      const nome = String(cmd.nome || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!nome) return;
+      const p = dados.pastores.find(x => String(x.nome).trim().toLowerCase() === nome.toLowerCase()) || dados.salvarPastor({ nome });
+      mandar(ws, { tipo: 'pastorGuardado', id: p.id, nome: p.nome });
       transmitir();
       return;
     }
@@ -534,7 +584,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       const conversa = String(cmd.conversa || '');
       conta.videos(conversa)
         .then(lista => {
-          const naReuniao = origensDaReuniao();
+          const naReuniao = origensDaReuniao(papel === 'painel' ? cmd.reuniaoId : estado.reuniaoId);
           mandar(ws, { tipo: 'tgVideos', conversa, lista: lista.map(v => {
             const o = `tg:${conversa}:${v.id}`;
             return { ...v, jaBaixado: !!dados.daOrigem(o), naReuniao: naReuniao.has(o) };
@@ -549,13 +599,22 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
       return;
     }
     if (cmd.cmd === 'baixarTg') {
-      if (papel === 'telao' || !conta || !conta.ligada() || !estado.reuniaoId) return;
+      // O Painel (notebook) baixa para a Biblioteca e, se estiver preparando uma reunião, para dentro dela; nunca mexe na TV.
+      const doPainel = papel === 'painel';
+      if (papel === 'telao' || !conta || !conta.ligada() || (!doPainel && !estado.reuniaoId)) return;
       const conversa = String(cmd.conversa || ''), msg = Number(cmd.msg);
       if (!/^-?\d+$/.test(conversa) || !Number.isInteger(msg)) return;
       const origem = `tg:${conversa}:${msg}`;
+      const destino = doPainel && cmd.reuniaoId && dados.reuniao(cmd.reuniaoId) ? cmd.reuniaoId : null;
       // O pastor escolhe (antes ou durante o download) se o vídeo vai direto para a TV ou só para a reunião.
       // Sem escolha, só entra na reunião e o celular pergunta quando terminar.
       const pronto = (bid, naTv) => {
+        if (doPainel) {
+          if (destino) dados.adicionarItens(destino, [bid], { semRepetir: true });
+          transmitir();
+          mandar(ws, { tipo: 'tgPronto', conversa, msg, itemId: null, mostrou: false, naReuniao: !!destino });
+          return;
+        }
         const item = colocarEMostrar(bid, papel, ws, naTv === true);
         mandar(ws, { tipo: 'tgPronto', conversa, msg, itemId: item && item.id, mostrou: naTv === true && !!item });
       };
@@ -574,7 +633,7 @@ function criarServidor({ dados, janelas = null, telegram = null, pdfParaImagens 
           if (b && r.novos[0] && titulo) dados.renomearArquivo(b.id, titulo); // com "?" e "!" que o nome do arquivo não aceita
           if (!b) throw new Error('Baixou, mas não deu para colocar na Biblioteca.');
           dados.anotarOrigem(b.id, origem);
-          if (estado.reuniaoId) pronto(b.id, baixandoTg && baixandoTg.naTv);
+          if (doPainel || estado.reuniaoId) pronto(b.id, baixandoTg && baixandoTg.naTv);
           else { transmitir(); mandar(ws, { tipo: 'tgPronto', conversa, msg, itemId: null, mostrou: false }); }
         })
         .catch(e => mandar(ws, { tipo: 'tgErro', mensagem: tgConta.mensagemDeErro(e) }))

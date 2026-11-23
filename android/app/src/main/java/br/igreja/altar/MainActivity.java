@@ -587,6 +587,22 @@ public class MainActivity extends Activity {
             porFora.execute(() -> mandarMidias(pedido));
         }
 
+        /**
+         * A página guarda pequenas coisas no celular (ex.: de quem é este celular). Ficam no aplicativo,
+         * então valem mesmo se o endereço do notebook mudar, e continuam depois de desconectar.
+         */
+        @JavascriptInterface
+        public void lembrar(String chave, String valor) {
+            if (chave == null || !chave.matches("[a-z]{1,20}") || valor == null || valor.length() > 500) return;
+            guardado.edit().putString("pagina." + chave, valor).apply();
+        }
+
+        @JavascriptInterface
+        public String lembrado(String chave) {
+            if (chave == null || !chave.matches("[a-z]{1,20}")) return "";
+            return guardado.getString("pagina." + chave, "");
+        }
+
         /** O número da versão deste app (o notebook diz o da versão que ele carrega; a página compara). */
         @JavascriptInterface
         public int versao() {
@@ -933,8 +949,18 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // A página trata o "voltar" (fecha o painel aberto, volta para a lista...). No começo, o app só vai para o fundo.
-        if (pagina.getVisibility() == View.VISIBLE && pagina.canGoBack()) pagina.goBack();
-        else moveTaskToBack(true);
+        // Com a página fora da tela (procurando o notebook, tela do QR code), o voltar manda o app para o fundo.
+        if (fechado || pagina.getVisibility() != View.VISIBLE) { moveTaskToBack(true); return; }
+        // A página decide: "sim" = voltou um passo (fechou o que estava aberto, voltou para a lista...);
+        // "nao" = já está no começo, então o app vai para o fundo.
+        pagina.evaluateJavascript(
+                "(function(){try{return window.altarVoltar?window.altarVoltar():'antiga'}catch(e){return 'antiga'}})()",
+                resposta -> {
+                    if (fechado) return;
+                    if (resposta != null && resposta.contains("sim")) return;
+                    // Página de um Altar mais antigo no notebook: ela mesma trata o voltar pelo histórico.
+                    if (resposta != null && resposta.contains("antiga") && pagina.canGoBack()) { pagina.goBack(); return; }
+                    moveTaskToBack(true);
+                });
     }
 }

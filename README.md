@@ -25,10 +25,13 @@ Antes, conduzir uma reunião exigia alguém no computador abrindo arquivos, troc
 ## Funcionalidades
 
 - **Reunião em cartões:** vídeos, imagens, músicas, pregação (várias imagens com ◀ ▶) e convites
+- **O celular lembra de quem ele é:** na primeira vez, o celular pergunta o nome do pastor (toca na lista ou escreve; nome novo entra na lista de pastores do notebook) e guarda. Ao criar uma reunião pelo celular, o nome já vem escolhido
+- **Arrumar a reunião pelo celular:** em "Mudar a ordem ou tirar um item", o pastor arrasta os itens pelas três barrinhas para mudar a ordem, ou tira um item pela lixeira (o que está na TV não sai; o arquivo continua na Biblioteca). O botão de voltar do celular volta uma tela por vez e só sai do aplicativo na tela inicial
+- **Pregação a partir de imagens, PDF ou PowerPoint:** várias imagens marcadas (na Biblioteca ou no celular) viram uma pregação só; no notebook dá para subir, descer, tirar e colocar imagens. O PowerPoint é aberto pelo PowerPoint do próprio notebook (ou pelo LibreOffice); sem nenhum dos dois, o programa pede o arquivo em PDF
 - **Bíblia embutida (ACF, ARC e NVI):** passagens preparadas antes e **versículo avulso** escolhido na hora, com fundos de imagem
 - **Controle pelo celular sem instalar app:** funciona em Android e iPhone pelo navegador, pela rede Wi-Fi local, sem depender de internet
 - **Envio de arquivos pelo celular** direto para a Biblioteca do notebook
-- **Fotos e vídeos do Telegram:** o celular mostra as conversas como no Telegram (pessoas, grupos e canais); o pastor abre uma, toca na foto ou no vídeo e o programa baixa no notebook
+- **Fotos e vídeos do Telegram:** as conversas aparecem como no Telegram (pessoas, grupos e canais), no celular e no notebook; o pastor abre uma, toca na foto ou no vídeo e o programa baixa no notebook
 - **Janela do notebook na TV** (YouTube, Telegram...): o celular toca, pausa, adianta e mexe no volume só daquele programa
 - **Controles de culto:** apagar a TV, volume, tela de espera com a logo da igreja e encerrar
 - **Instalador para Windows** que já libera o programa no firewall e abre sozinho quando o notebook liga
