@@ -535,30 +535,23 @@ a.btn.primary { color: var(--on-accent); }
 .ta-botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ta-botoes .btn { min-height: 52px; font-size: 17px; }
 .ta-botoes .btn:not(.danger) { background: var(--surface); border-color: var(--surface); color: var(--navy); }
-.musica-grupo { margin: 14px 0 6px; }
+/* Títulos dos grupos (Desta reunião, Favoritas...): bem visíveis, para achar o grupo de relance */
+.musica-grupo { margin: 20px 0 8px; padding: 0 4px; display: flex; align-items: center; gap: 8px; font-family: inherit; font-size: 19px; font-weight: 700; line-height: 1.2; color: var(--navy); }
+.musica-grupo .musica-qt { margin-left: 0; background: var(--navy); color: var(--navy-ink); font-size: 14px; }
 .passagens .btn.musica-linha { display: flex; align-items: center; gap: 10px; }
 /* Nome comprido: no máximo 2 linhas, com reticências (o nome inteiro aparece ao renomear). */
 .musica-nome { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .musica-tag { flex: none; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--navy); color: var(--navy-ink); }
 
-/* Aba "Música": a estrela de favorita ao lado de cada música, e o campo para dar outro nome */
-.musica-item { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px; gap: 6px; }
-.passagens .btn.musica-fav { justify-content: center; padding: 0; color: var(--muted); }
-.musica-fav .i { width: 26px; height: 26px; }
-.passagens .btn.musica-fav.sim { color: #b7791f; border-color: #e3c07a; background: #fdf6e3; }
-.musica-fav.sim .i { fill: currentColor; }
+/* Aba "Música": o campo para dar outro nome */
+.musica-item { display: grid; grid-template-columns: minmax(0, 1fr) 52px; gap: 6px; }
 .musica-renomear { display: grid; gap: 8px; padding: 10px; border-radius: 14px; border: 2px solid var(--navy); background: var(--surface); }
 .musica-renomear .ta-botoes .btn { background: var(--surface); border-color: var(--line); color: var(--ink); }
 .musica-renomear .ta-botoes .btn.primary { background: var(--navy); border-color: var(--navy); color: var(--navy-ink); }
-.musica-dica { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; }
-.musica-dica .i { flex: none; width: 20px; height: 20px; }
 
-/* Aba "Música": o "+" coloca a música na reunião; o "✓" avisa que ela já está lá */
+/* Aba "Música": o "⋯" ao lado de cada música abre as opções dela */
 .passagens .btn.musica-por { justify-content: center; padding: 0; color: var(--navy); }
 .musica-por .i { width: 24px; height: 24px; }
-.passagens .btn.musica-por.ja { background: var(--surface-2); border-color: var(--line); color: var(--live); }
-.musica-legenda { margin: 14px 0 8px; display: grid; gap: 4px; }
-.musica-legenda .musica-dica { margin: 0; }
 /* "Colocar na reunião": as músicas em lista, sem imagem */
 .passagens .btn.bib-musica.on { border: 2px solid var(--navy); background: var(--surface-2); }
 .bib-musica.fav > .i { color: #b7791f; fill: currentColor; }
@@ -566,3 +559,24 @@ a.btn.primary { color: var(--on-accent); }
 .bib-musica-texto small { font-size: 13px; font-weight: 400; color: var(--muted); }
 .bib-musica .ordem { flex: none; display: inline-flex; align-items: center; gap: 3px; background: var(--navy); color: var(--navy-ink); font-size: 15px; padding: 2px 9px; border-radius: 99px; }
 .bib-musica .ordem .i { width: 14px; height: 14px; }
+
+/* Aba "Música": o grupo "Desta reunião", no alto */
+.musica-texto { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.musica-situacao { font-size: 13px; font-weight: 700; color: var(--navy); }
+
+/* A pergunta antes de tirar a música da reunião */
+.musica-tirar { border-color: var(--accent); }
+.musica-tirar b { font-size: 18px; line-height: 1.25; overflow-wrap: anywhere; }
+.musica-tirar span { font-size: 15px; color: var(--muted); }
+.musica-tirar .ta-botoes.um { grid-template-columns: 1fr; }
+.musica-tirar .ta-botoes .btn.danger { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Aba "Música": as opções de uma música (abrem embaixo dela) e a estrela da favorita antes do nome */
+.musica-por .i { width: 28px; height: 28px; }
+.passagens .btn.musica-por.aberto { background: var(--navy); border-color: var(--navy); color: var(--navy-ink); }
+.musica-opcoes { display: grid; gap: 6px; padding: 10px; border-radius: 14px; border: 2px solid var(--navy); background: var(--surface-2); }
+.passagens .musica-opcoes .btn { min-height: 54px; font-size: 18px; gap: 10px; background: var(--surface); }
+.passagens .musica-opcoes .btn.sai { color: var(--accent); }
+.musica-estrela { display: contents; color: #b7791f; }
+.musica-estrela .i { fill: currentColor; }
+.musica-na-reuniao { font-size: 13px; font-weight: 400; color: var(--muted); }

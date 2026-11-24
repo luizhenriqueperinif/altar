@@ -27,6 +27,7 @@
     ok: '<path d="M5 12.5l4.5 4.5L19 7"/>',
     subir: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     descer: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    pontos: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
     lixo: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
     pega: '<path d="M5 8h14M5 12h14M5 16h14"/>',
     pessoa: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"/>',

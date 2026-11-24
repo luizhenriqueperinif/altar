@@ -17,8 +17,10 @@
   let palavraAberta = false;   // painel da Palavra aberto (setas + passagens preparadas)
   let pregacaoAberta = false;  // painel da Pregação aberto (◀ ▶ + miniaturas)
   let escolhendoMusica = false; // lista de músicas para tocar avulsa
-  let arrumandoMusicas = false; // na aba "Música": escolhendo uma música para dar outro nome
-  let renomeandoMusica = null;  // a música que está ganhando outro nome: { id, titulo }
+  // Aba "Música": cada linha tem uma chave ("i:<item da reunião>" ou "m:<música>"), para saber em qual delas se está mexendo.
+  let opcoesMusica = null;      // a linha com as opções abertas (o botão "⋯")
+  let renomeandoMusica = null;  // a música que está ganhando outro nome: { id, titulo, chave }
+  let tirandoMusica = null;     // a linha da música que está para sair da reunião, esperando o "sim"
   let envio = null;            // mandar arquivos do celular para a Biblioteca: { status, atual, total, pct, resultado, modo }
   let colocando = false;       // "Colocar na reunião": a pergunta "onde está?" (no notebook ou neste celular)
   let arrumando = false;       // reunião: mudando a ordem dos itens ou tirando algum
@@ -688,23 +690,39 @@
     const a = dados.estado.audio;
     const atual = id => a && !a.video && a.bibliotecaId === id;
     const situacao = () => (a.tocando ? 'Tocando' : a.terminou ? 'Terminou' : 'Pausada');
-    // Cada música: toque para tocar; a estrela marca como favorita; o "+" coloca na reunião aberta.
-    const jaNaReuniao = new Set(((dados.reuniao && dados.reuniao.itens) || []).map(i => i.bibliotecaId).filter(Boolean));
-    const por = m => (jaNaReuniao.has(m.id)
-      ? `<button class="btn musica-por ja" data-acao="musicaJaEsta" aria-label="${esc(m.titulo)} já está na reunião">${I('ok')}</button>`
-      : `<button class="btn musica-por" data-acao="porMusicaNaReuniao" data-id="${m.id}" aria-label="Colocar na reunião: ${esc(m.titulo)}">${I('mais')}</button>`);
-    const tocar = m => `<div class="musica-item">
-        <button class="btn musica-linha ${atual(m.id) ? 'sel' : ''}" data-acao="tocarMusica" data-id="${m.id}"${atual(m.id) ? ' aria-current="true"' : ''}>
-          ${I(atual(m.id) ? 'tocando' : 'musica')}<span class="musica-nome">${esc(m.titulo)}</span>${atual(m.id) ? `<span class="musica-tag">${situacao()}</span>` : ''}</button>
-        <button class="btn musica-fav ${m.favorita ? 'sim' : ''}" data-acao="favMusica" data-id="${m.id}" aria-pressed="${!!m.favorita}" aria-label="${m.favorita ? 'Tirar das favoritas' : 'Marcar como favorita'}: ${esc(m.titulo)}">${I('estrela')}</button>
-        ${por(m)}</div>`;
-    // "Renomear músicas": toque na música e escreva o nome novo.
-    const renomear = m => renomeandoMusica && renomeandoMusica.id === m.id
-      ? `<div class="musica-renomear">
+    // Cada música: toque no nome para tocar; o "⋯" ao lado abre as opções (favoritar, reunião, renomear).
+    const itensDeMusica = ((dados.reuniao && dados.reuniao.itens) || []).filter(i => i.tipo === 'musica' && i.bibliotecaId);
+    const jaNaReuniao = new Set(itensDeMusica.map(i => i.bibliotecaId));
+    // Tirar da reunião pede um "sim" (a música continua na Biblioteca). A que está tocando não sai: primeiro para.
+    const tirar = (m, itemId) => (a && a.itemId === itemId && !a.terminou
+      ? `<div class="musica-renomear musica-tirar"><b>${esc(m.titulo)}</b><span>Está tocando agora. Pare a música antes de tirar.</span>
+          <div class="ta-botoes um"><button class="btn" data-acao="tirarMusicaNao">Entendi</button></div></div>`
+      : `<div class="musica-renomear musica-tirar"><b>Tirar “${esc(m.titulo)}” desta reunião?</b><span>A música continua na Biblioteca.</span>
+          <div class="ta-botoes"><button class="btn" data-acao="tirarMusicaNao">Cancelar</button><button class="btn danger" data-acao="tirarMusicaSim" data-item="${itemId}">${I('lixo')} Tirar</button></div></div>`);
+    // itemId: o cartão da reunião, quando a linha está no grupo "Desta reunião".
+    const linha = (m, itemId) => {
+      const chave = itemId ? `i:${itemId}` : `m:${m.id}`;
+      const item = itemId || (itensDeMusica.find(i => i.bibliotecaId === m.id) || {}).id;   // o cartão dela na reunião, se houver
+      if (renomeandoMusica && renomeandoMusica.chave === chave) {
+        return `<div class="musica-renomear">
           <input type="text" id="musica-nome" class="campo-cel" value="${esc(renomeandoMusica.titulo)}" maxlength="80" autocomplete="off" aria-label="Nome da música">
-          <div class="ta-botoes"><button class="btn" data-acao="renomearNao">Cancelar</button><button class="btn primary" data-acao="renomearSim">${I('ok')} Salvar</button></div></div>`
-      : `<button class="btn musica-linha" data-acao="renomearMusica" data-id="${m.id}">${I('editar')}<span class="musica-nome">${esc(m.titulo)}</span></button>`;
-    const linha = arrumandoMusicas ? renomear : tocar;
+          <div class="ta-botoes"><button class="btn" data-acao="renomearNao">Cancelar</button><button class="btn primary" data-acao="renomearSim">${I('ok')} Salvar</button></div></div>`;
+      }
+      if (item && tirandoMusica === chave) return tirar(m, item);
+      const toca = atual(m.id), aberto = opcoesMusica === chave;
+      const icone = toca ? I('tocando') : m.favorita ? `<span class="musica-estrela">${I('estrela')}</span>` : I('musica');
+      const embaixo = toca ? `<small class="musica-situacao">${situacao()}</small>`
+        : item && !itemId ? '<small class="musica-na-reuniao">já está na reunião</small>' : '';
+      const opcoes = aberto ? `<div class="musica-opcoes">
+          <button class="btn" data-acao="favMusica" data-id="${m.id}">${I('estrela')} ${m.favorita ? 'Tirar das favoritas' : 'Favoritar'}</button>
+          ${item ? `<button class="btn sai" data-acao="tirarMusica" data-chave="${chave}">${I('lixo')} Tirar desta reunião</button>`
+            : dados.reuniao ? `<button class="btn" data-acao="porMusicaNaReuniao" data-id="${m.id}">${I('mais')} Colocar na reunião</button>` : ''}
+          <button class="btn" data-acao="renomearMusica" data-id="${m.id}" data-chave="${chave}">${I('editar')} Renomear</button></div>` : '';
+      return `<div class="musica-item">
+        <button class="btn musica-linha ${toca ? 'sel' : ''}" ${itemId ? `data-acao="tocarMusicaDaReuniao" data-item="${itemId}"` : `data-acao="tocarMusica" data-id="${m.id}"`}${toca ? ' aria-current="true"' : ''}>
+          ${icone}<span class="musica-texto"><span class="musica-nome">${esc(m.titulo)}</span>${embaixo}</span></button>
+        <button class="btn musica-por ${aberto ? 'aberto' : ''}" data-acao="opcoesMusica" data-chave="${chave}" aria-expanded="${aberto}" aria-label="Opções de ${esc(m.titulo)}">${I('pontos')}</button></div>${opcoes}`;
+    };
     // Em cima, o que está tocando, com pausar e parar ali mesmo.
     const agora = a && dados.musica
       ? `<div class="tocando-agora">
@@ -715,38 +733,32 @@
             <button class="btn danger" data-cmd="audioParar">${I('parar')} Parar</button></div></div>`
       : '<p class="note">Toque numa música para tocar. A TV continua mostrando o que está nela.</p>';
     // Embaixo, as músicas em ordem alfabética. Em "Todas": as favoritas primeiro, depois o resto (por categoria, se houver).
-    const bloco = (nome, l) => `<div class="eyebrow musica-grupo">${esc(nome)} · ${l.length}</div><div class="passagens">${l.map(linha).join('')}</div>`;
+    const titulo = (nome, qtd) => `<h3 class="musica-grupo">${esc(nome)}<span class="musica-qt">${qtd}</span></h3>`;
+    const bloco = (nome, l) => `${titulo(nome, l.length)}<div class="passagens">${l.map(m => linha(m)).join('')}</div>`;
     let corpo;
     if (!todas.length) corpo = '<p class="note">Nenhuma música na Biblioteca ainda. Coloque as músicas pelo notebook.</p>';
     else if (!lista.length) corpo = '<p class="note">Nenhuma música nesta categoria.</p>';
     else if (catMusica === 'todas') {
-      const favoritas = lista.filter(m => m.favorita), resto = lista.filter(m => !m.favorita);
+      // No alto, as músicas desta reunião, na ordem em que estão nela (elas saem dos grupos de baixo, para não repetir).
+      const daReuniao = itensDeMusica.map(i => ({ item: i.id, m: todas.find(x => x.id === i.bibliotecaId) })).filter(x => x.m);
+      const fora = daReuniao.length ? lista.filter(m => !jaNaReuniao.has(m.id)) : lista;
+      const favoritas = fora.filter(m => m.favorita), resto = fora.filter(m => !m.favorita);
       const grupos = [];
       if (favoritas.length) grupos.push(['Favoritas', favoritas]);
       if (cats.length) grupos.push(...cats.map(k => [k.nome, resto.filter(m => m.categoria === k.id)]), ['Outras', resto.filter(m => !daCat(m))]);
-      else if (favoritas.length) grupos.push(['Outras músicas', resto]);
+      else if (favoritas.length || daReuniao.length) grupos.push(['Outras músicas', resto]);
       const com = grupos.filter(g => g[1].length);
-      corpo = com.length ? com.map(([nome, l]) => bloco(nome, l)).join('') : `<div class="passagens">${lista.map(linha).join('')}</div>`;
+      const desta = daReuniao.length
+        ? `${titulo('Desta reunião', daReuniao.length)}<div class="passagens musicas-da-reuniao">${daReuniao.map(x => linha(x.m, x.item)).join('')}</div>` : '';
+      corpo = desta + (com.length ? com.map(([nome, l]) => bloco(nome, l)).join('') : daReuniao.length ? '' : `<div class="passagens">${lista.map(m => linha(m)).join('')}</div>`);
     } else {
       // Dentro de uma categoria: as favoritas vêm na frente.
-      corpo = `<div class="passagens">${[...lista.filter(m => m.favorita), ...lista.filter(m => !m.favorita)].map(linha).join('')}</div>`;
-    }
-    if (arrumandoMusicas) {
-      return `<h2 class="m-titulo">Renomear músicas</h2>
-        <p class="note">Toque na música que quer renomear e escreva o nome novo.</p>
-        ${abas}
-        ${corpo}
-        <button class="btn primary huge" data-acao="arrumarMusicasPronto">${I('ok')} Pronto</button>`;
+      corpo = `<div class="passagens">${[...lista.filter(m => m.favorita), ...lista.filter(m => !m.favorita)].map(m => linha(m)).join('')}</div>`;
     }
     return `<h2 class="m-titulo">Músicas${todas.length ? ` <span class="musica-qt">${todas.length}</span>` : ''}</h2>
         ${agora}
         ${abas}
-        ${corpo}
-        ${todas.length ? `<div class="musica-legenda">
-          <p class="note musica-dica">${I('estrela')} Favorita: a música passa a aparecer primeiro.</p>
-          <p class="note musica-dica">${I('mais')} Coloca na reunião: vira um cartão e fica salva nela.</p>
-          <p class="note musica-dica">${I('ok')} Já está na reunião.</p></div>
-        <button class="btn" data-acao="arrumarMusicas">${I('editar')} Renomear músicas</button>` : ''}`;
+        ${corpo}`;
   }
 
   // ---------- Mandar arquivos do celular para o notebook ----------
@@ -1168,8 +1180,9 @@
       else escolhendo = null;
       return true;
     }
+    if (tirandoMusica) { tirandoMusica = null; return true; }
     if (renomeandoMusica) { renomeandoMusica = null; return true; }
-    if (arrumandoMusicas) { arrumandoMusicas = false; return true; }
+    if (opcoesMusica) { opcoesMusica = null; return true; }
     if (naReuniao && (palavraAberta || pregacaoAberta || escolhendoMusica)) { palavraAberta = false; pregacaoAberta = false; escolhendoMusica = false; return true; }
     if (naReuniao) { naInicio = true; arrumando = false; tirandoItem = null; return true; }
     if (verApp) { verApp = false; return true; }
@@ -1353,7 +1366,7 @@
       if (dados.versiculo) palavraAberta = true;
       else escolhendo = { etapa: 'livro', test: 'AT' };
     },
-    navMusica: () => { escolhendoMusica = true; escolhendo = null; palavraAberta = false; pregacaoAberta = false; arrumandoMusicas = false; renomeandoMusica = null; },
+    navMusica: () => { escolhendoMusica = true; escolhendo = null; palavraAberta = false; pregacaoAberta = false; opcoesMusica = null; renomeandoMusica = null; tirandoMusica = null; },
     encerrar: () => { confirmarEncerrar = true; },
     // Arrumar a reunião pelo celular: ordem dos itens e tirar um item
     arrumar: () => { arrumando = true; tirandoItem = null; },
@@ -1416,7 +1429,7 @@
     fecharPregacao: () => { pregacaoAberta = false; },
     irSlide: el => enviar({ cmd: 'irSlide', n: Number(el.dataset.n) }),
     abrirMusicas: () => { escolhendoMusica = true; },
-    catMusica: el => { catMusica = el.dataset.v; },
+    catMusica: el => { catMusica = el.dataset.v; opcoesMusica = null; renomeandoMusica = null; tirandoMusica = null; },
     abrirEnvio: () => { envio = { status: 'escolher' }; },
     abrirColocar: () => { colocando = true; recentes = null; carregarRecentes(); },
     fecharColocar: () => { colocando = false; recentes = null; },
@@ -1455,22 +1468,30 @@
     envioJuntas: () => { const a = envio.arquivos; envio.arquivos = null; enviarArquivos(a, 'pregacao'); },
     fecharEnvio: () => { envio = null; },
     fecharMusicas: () => { escolhendoMusica = false; },
+    // O "⋯" de cada música abre (ou fecha) as opções dela; só uma linha fica aberta por vez.
+    opcoesMusica: el => {
+      opcoesMusica = opcoesMusica === el.dataset.chave ? null : el.dataset.chave;
+      renomeandoMusica = null; tirandoMusica = null;
+      if (opcoesMusica) setTimeout(() => { const o = document.querySelector('.musica-opcoes'); if (o) o.scrollIntoView({ block: 'nearest' }); }, 60);
+    },
     // Favorita e nome novo: já mostram na tela enquanto o notebook grava.
     favMusica: el => {
       const m = (dados.musicas || []).find(x => x.id === el.dataset.id);
       if (!m) return;
       m.favorita = !m.favorita;
       enviar({ cmd: 'favoritarMusica', id: m.id, sim: m.favorita });
+      opcoesMusica = null;
     },
-    // Coloca a música no fim da reunião aberta; o "+" vira "já está" assim que o notebook grava.
-    porMusicaNaReuniao: el => { enviar({ cmd: 'colocarDaBiblioteca', bibliotecaIds: [el.dataset.id] }); },
-    musicaJaEsta: () => {},
-    arrumarMusicas: () => { arrumandoMusicas = true; renomeandoMusica = null; },
-    arrumarMusicasPronto: () => { arrumandoMusicas = false; renomeandoMusica = null; },
+    // Coloca a música no fim da reunião aberta; ela sobe para "Desta reunião" assim que o notebook grava.
+    porMusicaNaReuniao: el => { enviar({ cmd: 'colocarDaBiblioteca', bibliotecaIds: [el.dataset.id] }); opcoesMusica = null; },
+    tirarMusica: el => { tirandoMusica = el.dataset.chave; opcoesMusica = null; },
+    tirarMusicaNao: () => { tirandoMusica = null; },
+    tirarMusicaSim: el => { enviar({ cmd: 'tirarItemDaReuniao', itemId: el.dataset.item }); tirandoMusica = null; },
     renomearMusica: el => {
       const m = (dados.musicas || []).find(x => x.id === el.dataset.id);
       if (!m) return;
-      renomeandoMusica = { id: m.id, titulo: m.titulo };
+      renomeandoMusica = { id: m.id, titulo: m.titulo, chave: el.dataset.chave };
+      opcoesMusica = null;
       setTimeout(() => { const i = document.getElementById('musica-nome'); if (i) { i.focus(); i.select(); } }, 60);
     },
     renomearNao: () => { renomeandoMusica = null; },
@@ -1481,7 +1502,8 @@
       if (titulo && m && titulo !== m.titulo) { m.titulo = titulo; enviar({ cmd: 'renomearMusica', id: m.id, titulo }); }
       renomeandoMusica = null;
     },
-    tocarMusica: el => { enviar({ cmd: 'tocarMusica', bibliotecaId: el.dataset.id }); },   // continua na aba "Música"
+    tocarMusicaDaReuniao: el => { enviar({ cmd: 'mostrar', itemId: el.dataset.item }); opcoesMusica = null; },   // toca o cartão da reunião
+    tocarMusica: el => { enviar({ cmd: 'tocarMusica', bibliotecaId: el.dataset.id }); opcoesMusica = null; },   // continua na aba "Música"
     passagem: el => { enviar({ cmd: 'mostrarPassagem', itemId: el.dataset.item, passagemId: el.dataset.p }); palavraAberta = true; },
     fecharVerso: () => { palavraAberta = false; },
     irVersiculo: el => enviar({ cmd: 'irVersiculo', v: Number(el.dataset.v) }),
